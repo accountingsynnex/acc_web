@@ -19,6 +19,39 @@
   const isExpense = code => /^6/.test(code);
 
   const expandedDepts = new Set();
+
+  /* How the accounts inside a department are ordered. One shared setting,
+     not one per department: picking "by code" once should reorder every
+     drill-down at the same time, the way sorting a spreadsheet column does.
+     Defaults to the largest spend first, which is what the ranking above
+     shows. */
+  let acctSort = { key: 'actual', dir: 'desc' };
+
+  function sortAccounts(list) {
+    const { key, dir } = acctSort, s = dir === 'asc' ? 1 : -1;
+    const byCode = (a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true });
+    // Accounts with no budget line have nothing to rank on, so they sort to
+    // the bottom in BOTH directions — floating them to the top on an
+    // ascending sort would bury the rows the sort was asked about.
+    const valOf = a => key === 'budget' ? a.budget
+      : key === 'variance' ? (a.budget == null ? null : a.actual - a.budget)
+      : a.actual;
+    return list.slice().sort((a, b) => {
+      if (key === 'code') return s * byCode(a, b);
+      const av = valOf(a), bv = valOf(b);
+      if (av == null && bv == null) return byCode(a, b);
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      return s * (av - bv) || byCode(a, b);
+    });
+  }
+
+  function sortableTh(key, label, cls) {
+    const on = acctSort.key === key;
+    const arrow = on ? (acctSort.dir === 'asc' ? '▲' : '▼') : '';
+    return `<th class="${cls} sortable${on ? ' sorted' : ''}" data-sort="${key}" title="กดเพื่อเรียงลำดับ">${label}<span class="sarrow">${arrow}</span></th>`;
+  }
+
   const charts = {};
   function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
   function drawChart(canvasId, labels, actualData, budgetData) {
@@ -194,11 +227,12 @@
 
     function detailHtml(d) {
       const open = expandedDepts.has(d.code);
-      const list = d.accounts.slice().sort((a, b) => b.actual - a.actual);
-      const top = list.slice(0, 8);
-      const rest = list.slice(8);
-      const restActual = rest.reduce((s, a) => s + a.actual, 0);
-      const restBudget = rest.reduce((s, a) => s + (a.budget || 0), 0);
+      // Every account, not a top-N slice: once the header can be sorted, a
+      // cut-off would silently hide whatever the chosen order pushed down —
+      // and sorting by code exists precisely to go find one account. Long
+      // departments scroll inside the drill-down instead (CSS max-height, so
+      // short ones get no scrollbar at all).
+      const list = sortAccounts(d.accounts);
       const line = a => {
         const v = a.budget == null ? null : a.actual - a.budget;
         return `<tr class="${v != null && v > 0.5 ? 'acct-over' : ''}">
@@ -208,10 +242,10 @@
           <td class="r ${v != null && v > 0 ? 'neg' : ''}">${v == null ? '—' : (v >= 0 ? '+' : '') + money(v)}</td>` : ''}
         </tr>`;
       };
-      return `<tr class="dept-detail" data-for="${esc(d.code)}" ${open ? '' : 'hidden'}><td colspan="${hasBudget ? 6 : 4}"><div class="inner"><table>
-        <thead><tr><th>บัญชี</th><th class="r">Actual</th>${accountBudgets ? '<th class="r">Budget</th><th class="r">ผลต่าง</th>' : ''}</tr></thead>
-        <tbody>${top.map(line).join('')}${rest.length ? line({ code: '', name: `อื่นๆ (${rest.length} บัญชี)`, actual: restActual, budget: accountBudgets ? restBudget : null }) : ''}</tbody>
-      </table></div></td></tr>`;
+      return `<tr class="dept-detail" data-for="${esc(d.code)}" ${open ? '' : 'hidden'}><td colspan="${hasBudget ? 6 : 4}"><div class="inner"><div class="acct-scroll"><table>
+        <thead><tr>${sortableTh('code', 'บัญชี', '')}${sortableTh('actual', 'Actual', 'r')}${accountBudgets ? sortableTh('budget', 'Budget', 'r') + sortableTh('variance', 'ผลต่าง', 'r') : ''}</tr></thead>
+        <tbody>${list.map(line).join('')}</tbody>
+      </table></div></div></td></tr>`;
     }
 
     $('deptTbl').innerHTML = `<thead><tr><th></th><th>แผนก</th><th class="r">Actual</th>${hasBudget ? '<th class="r">Budget</th><th class="r">ผลต่าง</th><th>สถานะ</th>' : ''}</tr></thead>
@@ -226,6 +260,17 @@
         </tr>
         ${detailHtml(d)}`).join('')}</tbody>`;
     $('deptTbl').onclick = e => {
+      // Sorting a drill-down header re-renders every drill-down at once;
+      // expandedDepts is module state, so which departments are open
+      // survives the redraw. Clicking the same column again flips direction.
+      const th = e.target.closest('[data-sort]');
+      if (th) {
+        const key = th.dataset.sort;
+        if (acctSort.key === key) acctSort.dir = acctSort.dir === 'asc' ? 'desc' : 'asc';
+        else acctSort = { key, dir: key === 'code' ? 'asc' : 'desc' };   // codes read best low→high, money high→low
+        render();
+        return;
+      }
       const row = e.target.closest('.dept-row');
       if (!row) return;
       const code = row.dataset.dept;

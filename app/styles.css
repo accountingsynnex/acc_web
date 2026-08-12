@@ -312,7 +312,17 @@ td.stmt-amt.neg{color:var(--bad)}
 .dept-detail .inner th{padding:8px 12px;font-size:9.5px}
 .dept-detail .inner td{padding:8px 12px;border-bottom:1px solid var(--line);font-size:12.5px}
 .dept-detail .inner tbody tr:last-child td{border-bottom:0}
+/* Only tall drill-downs scroll — max-height leaves short ones scrollbar-free */
+.dept-detail .inner .acct-scroll{max-height:340px;overflow-y:auto}
+.dept-detail .inner thead th{position:sticky;top:0;z-index:1;background:var(--glass-strong)}
 tr.acct-over td{background:var(--bad-soft)}
+
+/* Sortable column header */
+th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
+th.sortable:hover{color:var(--accent-ink)}
+th.sortable.sorted{color:var(--accent-ink)}
+/* Fixed-width arrow slot so the label doesn't shift when sorting moves column */
+th.sortable .sarrow{display:inline-block;width:1em;margin-left:2px;font-size:8.5px;vertical-align:1px}
 /* review checklist */
 .checklist{display:flex;flex-direction:column;gap:10px}
 .check{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:var(--radius);background:var(--glass);border:1px solid var(--glass-brd);box-shadow:var(--shadow),inset 0 1px 0 var(--glass-hi)}
