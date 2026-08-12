@@ -23,8 +23,8 @@
   const M = n => (n / 1e6).toLocaleString('en-US', { maximumFractionDigits: 0 }) + 'M';
 
   // Which period the imported figures cover — ONE control, identical on all
-  // 3 tabs (Q1 · Q2 · Q3 · Q4 · ทั้งปี), replacing both the free-typed month
-  // count and SET's separate รายไตรมาส/เต็มปี toggle. It's a property of the
+  // 3 tabs (Q1 · Q2 · Q3 · Q4), replacing both the free-typed month count
+  // and SET's separate รายไตรมาส/เต็มปี toggle. It's a property of the
   // imported file, not of a tab, so the three toggles share one value.
   //
   // P&L accounts in a trial balance read cumulative since the start of the
@@ -33,12 +33,15 @@
   // need — turning a balance into days (every tab's cash cycle) and
   // annualising a flow (SET's ROA/ROE/Asset Turnover) — so picking the
   // quarter now determines them exactly instead of by a typed guess.
+  //
+  // There is no separate "full year" option because Q4 already is one: at
+  // Q4 the cumulative P&L covers all 12 months, so a full-year button would
+  // compute exactly the same numbers under a second name.
   const PERIOD_OPTS = [
     { key: 'q1', label: 'Q1', months: 3 },
     { key: 'q2', label: 'Q2', months: 6 },
     { key: 'q3', label: 'Q3', months: 9 },
     { key: 'q4', label: 'Q4', months: 12 },
-    { key: 'fy', label: 'ทั้งปี', months: 12 },
   ];
   let periodSel = 'q1';
   const periodOpt = () => PERIOD_OPTS.find(o => o.key === periodSel) || PERIOD_OPTS[0];
@@ -400,7 +403,8 @@
           ? ` และปรับ ROA/ROE/Total Asset Turnover เป็นรายปี <b>×${factor.toFixed(2)}</b>`
           : ' และไม่ต้องปรับ ROA/ROE/Total Asset Turnover เป็นรายปี (เต็มปีแล้ว)')
         : ' (ROA/ROE/Asset Turnover ของแท็บนี้ใช้ยอดสะสมตรงๆ ตามสูตรบริษัท ไม่ปรับเป็นรายปี)';
-      el.innerHTML = `เลือกงวดที่งบซึ่งนำเข้าครอบคลุม — งบทดลองสะสมกำไรขาดทุนตั้งแต่ต้นปีบัญชี <b>${esc(opt.label)}</b> จึงเท่ากับ <b>${opt.months} เดือน</b> ใช้แปลงยอดคงเหลือเป็นจำนวนวันในวงจรเงินสด${extra} — ค่านี้ใช้ร่วมกันทั้ง 3 แท็บ`;
+      const full = opt.months === 12 ? ' คือเต็มปี' : '';
+      el.innerHTML = `เลือกงวดที่งบซึ่งนำเข้าครอบคลุม — งบทดลองสะสมกำไรขาดทุนตั้งแต่ต้นปีบัญชี <b>${esc(opt.label)}</b> จึงเท่ากับ <b>${opt.months} เดือน</b>${full} ใช้แปลงยอดคงเหลือเป็นจำนวนวันในวงจรเงินสด${extra} — ค่านี้ใช้ร่วมกันทั้ง 3 แท็บ`;
     });
   }
 
