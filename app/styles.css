@@ -333,6 +333,16 @@ tr.acct-over td{background:var(--bad-soft)}
 .wb-drop .wbt{font-weight:700;font-size:14.5px}
 .wb-drop .wbd{color:var(--muted);font-size:12.5px;margin-top:2px}
 .wb-drop .wbtag{margin-left:auto;font-size:11px;font-weight:650;color:var(--accent-ink);background:var(--accent-soft);padding:4px 10px;border-radius:99px;white-space:nowrap}
+/* Loaded state: the zone doubles as the receipt for the file already imported,
+   so a reload doesn't make a finished import look like it never happened. */
+.wb-drop.loaded{border-style:solid;border-color:var(--good);cursor:default}
+.wb-drop.loaded:hover{border-color:var(--good)}
+.wb-drop.loaded .wbico{background:linear-gradient(160deg,#5cc39a,#0f7a52)}
+.wb-drop.loaded .wbt{font-family:var(--mono);font-size:13px;word-break:break-all}
+.wb-drop .wbrm{margin-left:auto;flex:none;font-size:11.5px;font-weight:650;white-space:nowrap;cursor:pointer;
+  color:var(--muted);background:none;border:1px solid var(--line-strong);padding:5px 11px;border-radius:99px}
+.wb-drop .wbrm:hover{color:var(--bad);border-color:var(--bad);background:var(--bad-soft)}
+.wb-drop:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .wb-or{display:flex;align-items:center;gap:12px;color:var(--faint);font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin:2px 0 12px}
 .wb-or::before,.wb-or::after{content:"";flex:1;height:1px;background:var(--line)}
 .wb-loadbar{display:none;height:3px;border-radius:99px;overflow:hidden;background:rgba(120,140,160,.18);margin-top:9px}

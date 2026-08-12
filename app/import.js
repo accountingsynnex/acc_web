@@ -70,8 +70,55 @@
 
   function resetWbDrop() {
     $('wbDrop').classList.remove('busy');
-    $('wbT').textContent = 'อัปโหลด Workpaper ทั้งไฟล์ (.xlsx)';
-    $('wbD').textContent = 'ลากไฟล์งบ Conso ทั้งไฟล์มาวาง — ระบบแยก TB ทุกบริษัท (SYN · SVP · SYNIN · SWOP) ให้อัตโนมัติ';
+    renderWorkbook();
+  }
+
+  /* Which entities are currently fed by the remembered workbook. Derived from
+     each TB's own file name rather than the note's entity list, so replacing a
+     single company with its own CSV afterwards drops it out of the count on
+     its own — and removing the workbook then only takes back what it still
+     owns, never the file that replaced it. */
+  function wbEntities(rec) {
+    return ENTITIES.map(e => e.code).filter(code => {
+      const s = Store.tb(code, activePeriod);
+      return s && String(s.fileName).startsWith(rec.fileName + ' › ');
+    });
+  }
+  const wbJournals = rec => Store.journals().filter(j => (rec.journalSources || []).includes(j.source));
+
+  function renderWorkbook() {
+    const drop = $('wbDrop'), rec = Store.workbook(activePeriod);
+    const ents = rec ? wbEntities(rec) : [];
+    if (rec && !ents.length) Store.clearWorkbook(activePeriod);   // every company it loaded is gone
+    if (!ents.length) {
+      drop.classList.remove('loaded');
+      $('wbTag').hidden = false;
+      $('wbRemove').hidden = true;
+      $('wbT').textContent = 'อัปโหลด Workpaper ทั้งไฟล์ (.xlsx)';
+      $('wbD').textContent = 'ลากไฟล์งบ Conso ทั้งไฟล์มาวาง — ระบบแยก TB ทุกบริษัท (SYN · SVP · SYNIN · SWOP) ให้อัตโนมัติ';
+      return;
+    }
+    drop.classList.add('loaded');
+    $('wbTag').hidden = true;
+    $('wbRemove').hidden = false;
+    $('wbT').textContent = rec.fileName;
+    const jc = wbJournals(rec).length;
+    const bits = [`TB ${ents.length} บริษัท (${ents.join(' · ')})`];
+    if (jc) bits.push(`${jc} journal`);
+    if (rec.deptSource) bits.push(`มิติแผนกจากชีต ${rec.deptSource}`);
+    $('wbD').textContent = `นำเข้าไว้แล้วเมื่อ ${new Date(rec.savedAt).toLocaleString('th-TH')} — ${bits.join(' · ')} · อัปไฟล์ใหม่ทับได้เลย`;
+  }
+
+  function removeWorkbook() {
+    const rec = Store.workbook(activePeriod);
+    if (!rec) return;
+    const ents = wbEntities(rec), jc = activePeriod ? 0 : wbJournals(rec).length;
+    const what = [`TB ${ents.length} บริษัท`].concat(jc ? [`รายการตัดบัญชี/ปรับปรุง ${jc} journal`] : []).join(' และ ');
+    if (!confirm(`เอาไฟล์ "${rec.fileName}" ออก?\n\nจะลบ${what ? ' ' + what : 'ข้อมูล'}ที่นำเข้าจากไฟล์นี้\nผังบัญชีที่จับคู่ไว้ งวดที่บันทึกไว้ และรายการที่คีย์เอง ยังอยู่ครบ`)) return;
+    ents.forEach(code => Store.removeTB(code, activePeriod));
+    if (!activePeriod) Store.removeJournalsBySource(rec.journalSources);
+    Store.clearWorkbook(activePeriod);
+    renderAll();
   }
 
   // Journal sheets: the elimination workpaper + each entity's adjustment
@@ -84,6 +131,9 @@
   function ingestWorkbook(file) {
     if (typeof XLSX === 'undefined') { alert('ตัวอ่าน Excel ยังไม่พร้อม'); return; }
     $('wbDrop').classList.add('busy');
+    $('wbDrop').classList.remove('loaded');       // the previous file's receipt is about to be replaced
+    $('wbRemove').hidden = true;
+    $('wbTag').hidden = false;
     $('wbT').textContent = 'กำลังอ่านและแยกไฟล์…';
     $('wbD').textContent = file.name;
     const reader = new FileReader();
@@ -112,6 +162,7 @@
         });
         const norm = s => String(s).trim().replace(/\s+/g, ' ').toUpperCase();
         const added = [];
+        let deptSheet = '';
         for (const ent of ENTITIES) {
           const base = 'TB ' + ent.code.toUpperCase();
           const sheetName = wb.SheetNames.find(n => norm(n) === base);
@@ -133,7 +184,11 @@
               if (got.deptRows.length) { dept = got.deptRows; deptSource = variant; }
             }
           }
-          if (rows.length) { Store.setTB(ent.code, file.name + ' › ' + sheetName, rows, activePeriod, dept, deptSource); added.push(ent.code); }
+          if (rows.length) {
+            Store.setTB(ent.code, file.name + ' › ' + sheetName, rows, activePeriod, dept, deptSource);
+            added.push(ent.code);
+            if (deptSource && !deptSheet) deptSheet = deptSource;
+          }
         }
         if (!added.length) alert('ไม่พบชีต TB รายบริษัท (TB SYN / TB SVP / TB SYNIN / TB SWOP) ในไฟล์นี้');
 
@@ -150,6 +205,18 @@
             journals = journals.concat(parseJournals(aoa, sh));
           }
           Store.setJournals(journals, JOURNAL_SHEETS);
+        }
+
+        // Remember the file itself, not just its rows, so the drop zone can
+        // report "already imported" on the next visit and undo it in one click.
+        if (added.length) {
+          Store.setWorkbook(activePeriod, {
+            fileName: file.name,
+            savedAt: new Date().toISOString(),
+            entities: added,
+            deptSource: deptSheet,
+            journalSources: activePeriod ? [] : JOURNAL_SHEETS,
+          });
         }
       } catch (e) { alert('อ่านไฟล์ Excel ไม่ได้: ' + e.message); }
       resetWbDrop(); renderAll();
@@ -196,6 +263,7 @@
     `<div class="tile ${cls}"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div>${meter != null ? `<div class="meter"><span style="width:${meter}%"></span></div>` : ''}</div>`;
 
   function renderAll() {
+    renderWorkbook();
     renderUploads();
     const loaded = Store.entitiesLoaded(activePeriod).length;
     const rows = Store.combinedRows(Store.tbFor(activePeriod));
@@ -328,7 +396,11 @@
 
   $('fileInput').onchange = e => { const f = e.target.files[0]; if (f && pendingEntity) (isXlsx(f) ? ingestEntityXlsx(pendingEntity, f) : ingest(pendingEntity, f)); e.target.value = ''; };
   $('wbInput').onchange = e => { if (e.target.files[0]) ingestWorkbook(e.target.files[0]); e.target.value = ''; };
-  $('wbDrop').onclick = () => $('wbInput').click();
+  // A <div role="button"> rather than a real <button>, because the "remove"
+  // control lives inside it and a button can't nest inside a button.
+  $('wbDrop').onclick = e => { if (e.target.closest('#wbRemove')) return; $('wbInput').click(); };
+  $('wbDrop').onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('wbInput').click(); } };
+  $('wbRemove').onclick = e => { e.stopPropagation(); removeWorkbook(); };
   $('wbDrop').addEventListener('dragover', e => { e.preventDefault(); $('wbDrop').classList.add('drag'); });
   $('wbDrop').addEventListener('dragleave', () => $('wbDrop').classList.remove('drag'));
   $('wbDrop').addEventListener('drop', e => { e.preventDefault(); $('wbDrop').classList.remove('drag'); const f = e.dataTransfer.files[0]; if (f) ingestWorkbook(f); });
