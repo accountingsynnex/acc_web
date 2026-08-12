@@ -1,0 +1,317 @@
+/* Import page — wire real CSV upload to the grouping engine.
+   Globals: RULEBOOK (rulebook.js), parseTB/validateTB/applyRulebook
+   (group-engine.js), Store (store.js). Shared state lives in Store so
+   mappings saved on the Mapping page auto-apply here. */
+(function () {
+  const ENTITIES = RULEBOOK.entities.length ? RULEBOOK.entities : [
+    { code: 'SYN', name: 'SYNNEX (Thailand)' }, { code: 'SVP', name: 'Service Point' },
+    { code: 'SYNIN', name: 'SYNNEX Incubation' }, { code: 'SWOP', name: 'Swop Mart' },
+  ];
+  let filter = 'all', pendingEntity = null;
+  // '' = the live/current period every other page reads. Anything else
+  // targets an archived period's own tb map directly — for uploading a
+  // prior period's TB straight in, instead of loading it as "current" and
+  // archiving a copy. Only Ratios' SET-tab TTM feature reads archived
+  // periods; every other page (Mapping, Journals, Statements, ...) always
+  // reads the live one, so switching this never disturbs the active close.
+  let activePeriod = '';
+
+  const $ = id => document.getElementById(id);
+  const money = n => {
+    const a = Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return n < 0 ? '(' + a + ')' : a;
+  };
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const balancedOf = ent => { const t = Store.tb(ent, activePeriod); return t ? validateTB(t.rows, 5) : null; };
+
+  function ingest(entityCode, file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const { rows, deptRows } = parseTB(reader.result);
+        if (!rows.length) throw new Error('ไม่พบแถวบัญชีในไฟล์');
+        Store.setTB(entityCode, file.name, rows, activePeriod, deptRows);
+      } catch (e) { alert(`อ่านไฟล์ของ ${entityCode} ไม่ได้: ${e.message}`); }
+      renderAll();
+    };
+    reader.readAsText(file);
+  }
+
+  // A single-entity .xlsx dropped on a specific entity's slot: prefer that
+  // entity's "TB <code>" sheet if the file happens to have one (e.g. the
+  // big combined workbook dropped on the wrong slot), otherwise fall back to
+  // the first sheet — covers a plain single-sheet TB export, which is a
+  // normal shape for a standalone monthly file and was previously always
+  // routed into ingestWorkbook() (which only recognizes the combined
+  // workbook's sheet names) and silently imported nothing.
+  function ingestEntityXlsx(entityCode, file) {
+    if (typeof XLSX === 'undefined') { alert('ตัวอ่าน Excel ยังไม่พร้อม'); return; }
+    const reader = new FileReader();
+    reader.onerror = () => alert('อ่านไฟล์ไม่ได้');
+    reader.onload = () => setTimeout(() => {
+      try {
+        const wb = XLSX.read(new Uint8Array(reader.result), {
+          type: 'array', cellStyles: false, cellFormula: false, cellHTML: false, cellNF: false, bookVBA: false,
+        });
+        const norm = s => String(s).trim().replace(/\s+/g, ' ').toUpperCase();
+        const wanted = 'TB ' + entityCode.toUpperCase();
+        const sheetName = wb.SheetNames.find(n => norm(n) === wanted) || wb.SheetNames[0];
+        const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, raw: true, defval: null });
+        const { rows, deptRows } = buildRows(aoa);
+        if (!rows.length) throw new Error('ไม่พบแถวบัญชีในไฟล์');
+        Store.setTB(entityCode, file.name + ' › ' + sheetName, rows, activePeriod, deptRows);
+      } catch (e) { alert(`อ่านไฟล์ของ ${entityCode} ไม่ได้: ${e.message}`); }
+      renderAll();
+    }, 30);
+    reader.readAsArrayBuffer(file);
+  }
+
+  const isXlsx = f => /\.xlsx?$/i.test(f.name);
+
+  function resetWbDrop() {
+    $('wbDrop').classList.remove('busy');
+    $('wbT').textContent = 'อัปโหลด Workpaper ทั้งไฟล์ (.xlsx)';
+    $('wbD').textContent = 'ลากไฟล์งบ Conso ทั้งไฟล์มาวาง — ระบบแยก TB ทุกบริษัท (SYN · SVP · SYNIN · SWOP) ให้อัตโนมัติ';
+  }
+
+  // Journal sheets: the elimination workpaper + each entity's adjustment
+  // workpaper. Parsed the same way every month, so re-importing refreshes
+  // them (Store.setJournals merges by id, keeping any enable/disable state).
+  const JOURNAL_SHEETS = ['Eliminate', 'AJE+RJE-Synnex', 'AJE+RJE-SVP', 'AJE+RJE-SWOPMART', 'AJE+RJE-Audit'];
+
+  // Read the whole consolidation workbook: split out each entity's TB sheet
+  // and parse the elimination/adjustment journals into double-entry lines.
+  function ingestWorkbook(file) {
+    if (typeof XLSX === 'undefined') { alert('ตัวอ่าน Excel ยังไม่พร้อม'); return; }
+    $('wbDrop').classList.add('busy');
+    $('wbT').textContent = 'กำลังอ่านและแยกไฟล์…';
+    $('wbD').textContent = file.name;
+    const reader = new FileReader();
+    reader.onerror = () => { alert('อ่านไฟล์ไม่ได้'); resetWbDrop(); };
+    reader.onload = () => setTimeout(() => {          // yield so the "reading" state paints first
+      try {
+        // Parse only the entity TB + journal sheets and cap rows — the workbook
+        // is ~25 MB and TB SYN spans Excel's full 1M-row range, so this keeps
+        // it to ~6s.
+        const wanted = ENTITIES.map(e => 'TB ' + e.code.toUpperCase()).concat(JOURNAL_SHEETS);
+        const wb = XLSX.read(new Uint8Array(reader.result), {
+          type: 'array', sheets: wanted, sheetRows: 5000,
+          cellStyles: false, cellFormula: false, cellHTML: false, cellNF: false, bookVBA: false,
+        });
+        const norm = s => String(s).trim().replace(/\s+/g, ' ').toUpperCase();
+        const added = [];
+        for (const ent of ENTITIES) {
+          const sheetName = wb.SheetNames.find(n => norm(n) === 'TB ' + ent.code.toUpperCase());
+          if (!sheetName) continue;
+          const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, raw: true, defval: null });
+          const { rows, deptRows } = buildRows(aoa);
+          if (rows.length) { Store.setTB(ent.code, file.name + ' › ' + sheetName, rows, activePeriod, deptRows); added.push(ent.code); }
+        }
+        if (!added.length) alert('ไม่พบชีต TB รายบริษัท (TB SYN / TB SVP / TB SYNIN / TB SWOP) ในไฟล์นี้');
+
+        // Eliminations/adjustments only ever apply to the live period's
+        // consolidation — an archived period is just raw combined figures
+        // for YoY/TTM comparison, so skip journal parsing when uploading
+        // straight into one.
+        if (!activePeriod) {
+          let journals = [];
+          for (const sh of JOURNAL_SHEETS) {
+            const sheetName = wb.SheetNames.find(n => norm(n) === norm(sh));
+            if (!sheetName) continue;
+            const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, raw: true, defval: null });
+            journals = journals.concat(parseJournals(aoa, sh));
+          }
+          Store.setJournals(journals, JOURNAL_SHEETS);
+        }
+      } catch (e) { alert('อ่านไฟล์ Excel ไม่ได้: ' + e.message); }
+      resetWbDrop(); renderAll();
+    }, 30);
+    reader.readAsArrayBuffer(file);
+  }
+
+  async function loadSamples() {
+    const files = { SVP: 'TB_SVP_2026-06.csv', SYNIN: 'TB_SYNIN_2026-06.csv', SWOP: 'TB_SWOP_2026-06.csv', SYN: 'TB_SYN_2026-06.csv' };
+    for (const [ent, fn] of Object.entries(files)) {
+      try {
+        let text = null;
+        if (typeof SAMPLES !== 'undefined' && SAMPLES[ent]) text = SAMPLES[ent].text;   // works offline (file://)
+        else { const res = await fetch('../test/' + fn); if (res.ok) text = await res.text(); }
+        if (!text) continue;
+        const { rows, deptRows } = parseTB(text);
+        if (rows.length) Store.setTB(ent, fn, rows, activePeriod, deptRows);
+      } catch (e) { /* skip */ }
+    }
+    renderAll();
+  }
+
+  function renderUploads() {
+    $('uploads').innerHTML = ENTITIES.map(ent => {
+      const s = Store.tb(ent.code, activePeriod);
+      if (s) {
+        const v = validateTB(s.rows, 5);
+        return `<div class="up" data-ent="${ent.code}">
+          <div class="ent"><span class="code">${esc(ent.code)}</span>
+            <button class="remove" data-remove="${ent.code}" title="เอาไฟล์ออก">✕</button></div>
+          <div class="file">${esc(s.fileName)}</div>
+          <div class="meta"><span>${s.rows.length.toLocaleString()} รหัส</span>
+            <span class="chip ${v.balanced ? 'good' : 'bad'}"><span class="dot"></span>${v.balanced ? 'Debit = Credit' : 'ไม่สมดุล'}</span></div>
+        </div>`;
+      }
+      return `<button class="up empty" data-ent="${ent.code}">
+        <span class="plus">+</span><b>${esc(ent.code)} · ${esc(ent.name)}</b>
+        <span>ลากไฟล์ CSV หรือ Excel มาวาง หรือคลิกเลือก</span></button>`;
+    }).join('');
+    wireUploads();
+  }
+
+  const tile = (k, v, s, cls = '', meter) =>
+    `<div class="tile ${cls}"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div>${meter != null ? `<div class="meter"><span style="width:${meter}%"></span></div>` : ''}</div>`;
+
+  function renderAll() {
+    renderUploads();
+    const loaded = Store.entitiesLoaded(activePeriod).length;
+    const rows = Store.combinedRows(Store.tbFor(activePeriod));
+    const res = rows.length ? applyRulebook(rows, RULEBOOK, Store.mappings()) : null;
+
+    if (!res) {
+      $('tiles').innerHTML = [tile('รหัสบัญชีทั้งหมด', '—', 'ยังไม่ได้นำเข้าไฟล์'),
+        tile('จัดกลุ่มอัตโนมัติแล้ว', '—', 'อัปโหลด TB เพื่อเริ่ม'),
+        tile('รหัสใหม่ ต้องตรวจ', '—', '—'), tile('งบทดลองสมดุล', '—', '—')].join('');
+    } else {
+      const allBalanced = Store.entitiesLoaded(activePeriod).every(e => balancedOf(e).balanced);
+      $('tiles').innerHTML = [
+        tile('รหัสบัญชีทั้งหมด', res.stats.total.toLocaleString(), `รวมจาก ${loaded} บริษัทที่นำเข้า`),
+        tile('จัดกลุ่มอัตโนมัติแล้ว', res.stats.mappedPct + '%', `${res.stats.mapped.toLocaleString()} รหัส ตรงกับ Rulebook`, '', res.stats.mappedPct),
+        tile('รหัสใหม่ ต้องตรวจ', String(res.stats.unmapped), 'ยังไม่เคยอยู่ใน Rulebook', res.stats.unmapped ? 'flag' : ''),
+        tile('งบทดลองสมดุล', allBalanced ? 'ผ่าน' : 'ตรวจ', `Debit = Credit ${loaded} บริษัท`).replace('<div class="v">', `<div class="v" style="color:var(--${allBalanced ? 'good' : 'bad'})">`),
+      ].join('');
+    }
+
+    $('filterSeg').querySelector('[data-f="new"]').textContent = `รหัสใหม่ · ${res ? res.stats.unmapped : 0}`;
+
+    if (!res) {
+      $('rows').innerHTML = `<tr><td colspan="5"><div class="results-empty"><div class="big">ยังไม่มีข้อมูล</div>
+        <div>อัปโหลดไฟล์ TB ด้านบน หรือ <span class="linkish" id="emptySample">ลองข้อมูลตัวอย่าง</span></div></div></td></tr>`;
+      const es = $('emptySample'); if (es) es.onclick = loadSamples;
+    } else {
+      const list = (filter === 'new' ? res.lines.filter(l => l.status === 'new') : res.lines)
+        .slice().sort((a, b) => Math.abs(b.closing) - Math.abs(a.closing));
+      $('rows').innerHTML = list.map(l => {
+        const neg = l.closing < 0;
+        if (l.status === 'new') {
+          return `<tr class="flagged"><td class="code"><span class="flag-stripe"></span>${esc(l.code)}</td>
+            <td class="name">${esc(l.name)}</td><td class="r amt ${neg ? 'neg' : ''}">${money(l.closing)}</td>
+            <td><span class="chip warn"><span class="dot"></span>ยังไม่ได้จัดกลุ่ม</span></td>
+            <td><a class="rowbtn" href="mapping.html">จับคู่กลุ่ม →</a></td></tr>`;
+        }
+        return `<tr><td class="code">${esc(l.code)}</td><td class="name">${esc(l.name)}</td>
+          <td class="r amt ${neg ? 'neg' : ''}">${money(l.closing)}</td>
+          <td><span class="path"><span class="sctn">${esc(l.rule.section)}</span><span class="arw">▸</span><span class="grp">${esc(l.rule.group)}</span></span></td>
+          <td><span class="chip good"><span class="dot"></span>จัดกลุ่มแล้ว</span></td></tr>`;
+      }).join('') || `<tr><td colspan="5"><div class="results-empty"><div>ไม่มีรายการในมุมมองนี้</div></div></td></tr>`;
+    }
+
+    const co = $('callout');
+    if (res && res.stats.unmapped) {
+      co.style.display = '';
+      $('calloutTxt').innerHTML = `มี <b>${res.stats.unmapped} รหัสใหม่</b> ที่ระบบยังจัดกลุ่มให้ไม่ได้ เพราะไม่เคยอยู่ใน Rulebook — <a class="linkish" href="mapping.html">จับคู่ให้ครั้งเดียว</a> ระบบจะจดจำไว้ใช้ทุกเดือนถัดไปโดยอัตโนมัติ`;
+    } else co.style.display = 'none';
+
+    const jn = $('journalNote'), jc = Store.journals().length;
+    if (res) {
+      jn.style.display = '';
+      jn.innerHTML = jc
+        ? `ตารางนี้คือยอด <b>ก่อนตัดรายการ</b> (Combining) — ระบบอ่านรายการตัดบัญชี/ปรับปรุงจากไฟล์แล้ว <b>${jc} journal</b> ดูยอดสุดท้ายที่ <a class="linkish" href="journals.html">Journals</a> หรือ <a class="linkish" href="statements.html">Statements</a>`
+        : `ตารางนี้คือยอด <b>ก่อนตัดรายการ</b> (Combining) — ยังไม่พบรายการตัดบัญชี/ปรับปรุงในไฟล์นี้ ถ้ามีชีต Eliminate/AJE ให้ลองอัปโหลด Workpaper ทั้งไฟล์อีกครั้ง`;
+    } else jn.style.display = 'none';
+
+    if (activePeriod) renderPeriods();   // uploading into an archived period changes its company count below
+  }
+
+  function renderPeriods() {
+    const periods = Store.listPeriods();
+    if (!periods.length) {
+      $('periodsTbl').innerHTML = `<tbody><tr><td class="muted" style="padding:14px 16px">ยังไม่มีงวดที่บันทึกไว้</td></tr></tbody>`;
+      return;
+    }
+    $('periodsTbl').innerHTML = `<thead><tr><th>รหัสงวด</th><th>ชื่องวด</th><th>บันทึกเมื่อ</th><th>บริษัท</th><th></th></tr></thead>
+      <tbody>${periods.map(p => `<tr><td class="code">${esc(p.key)}</td><td>${esc(p.label)}</td>
+        <td class="muted">${new Date(p.savedAt).toLocaleString('th-TH')}</td>
+        <td class="muted">${Object.keys(p.tb).length} บริษัท</td>
+        <td><button class="remove" data-period-remove="${esc(p.key)}" title="ลบงวดนี้">✕</button></td></tr>`).join('')}</tbody>`;
+    $('periodsTbl').querySelectorAll('[data-period-remove]').forEach(b => b.onclick = () => {
+      const key = b.dataset.periodRemove;
+      if (!confirm(`ลบงวด "${key}" ที่บันทึกไว้?`)) return;
+      Store.removePeriod(key);
+      if (activePeriod === key) activePeriod = '';   // was editing the period just deleted — back to current
+      renderPeriods(); renderPeriodSwitcher(); renderAll();
+    });
+  }
+
+  $('archiveBtn').onclick = () => {
+    const key = $('periodKey').value.trim(), label = $('periodLabel').value.trim();
+    if (!key) { alert('กรอกรหัสงวดก่อน เช่น 2026-06'); return; }
+    if (!Store.entitiesLoaded().length) { alert('ยังไม่มีข้อมูล TB ให้บันทึก'); return; }
+    Store.archivePeriod(key, label);
+    $('periodKey').value = ''; $('periodLabel').value = '';
+    renderPeriods(); renderPeriodSwitcher();
+  };
+
+  // Uploads default to the live/current period; switching here lets you
+  // upload a prior period's TB straight into an archive instead — e.g. to
+  // feed Ratios' SET-tab TTM feature the same quarter a year ago, without
+  // ever touching the current close.
+  function renderPeriodSwitcher() {
+    const periods = Store.listPeriods();
+    const opts = periods.map(p => `<option value="${esc(p.key)}">${esc(p.label)}</option>`).join('');
+    $('periodSwitcher').innerHTML = `<option value="">งวดปัจจุบัน (กำลังทำงาน)</option>${opts}<option value="__new__">+ สร้างงวดใหม่…</option>`;
+    $('periodSwitcher').value = activePeriod;
+    const note = $('periodSwitcherNote');
+    if (activePeriod) {
+      note.style.display = '';
+      note.innerHTML = `⚠ กำลังนำเข้าให้งวด <b>${esc(Store.getPeriod(activePeriod) ? Store.getPeriod(activePeriod).label : activePeriod)}</b> — ใช้แค่เทียบ YoY/TTM ในหน้า Ratios เท่านั้น ไม่กระทบ Mapping/Journals/Statements ของงวดปัจจุบัน`;
+    } else note.style.display = 'none';
+  }
+  $('periodSwitcher').onchange = e => {
+    const v = e.target.value;
+    if (v === '__new__') {
+      const key = prompt('รหัสงวดใหม่ (เช่น 2025-06):');
+      if (!key || !key.trim()) { renderPeriodSwitcher(); return; }
+      const label = prompt('ชื่องวด (เช่น มิ.ย. 2568):', key.trim()) || key.trim();
+      Store.tbFor(key.trim());               // create the empty period
+      Store.setPeriodLabel(key.trim(), label);
+      activePeriod = key.trim();
+    } else {
+      activePeriod = v;
+    }
+    renderPeriodSwitcher(); renderPeriods(); renderAll();
+  };
+
+  function wireUploads() {
+    document.querySelectorAll('.up[data-ent]').forEach(el => {
+      const ent = el.dataset.ent;
+      el.onclick = e => { if (e.target.closest('[data-remove]')) return; pendingEntity = ent; $('fileInput').click(); };
+      el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drag'); });
+      el.addEventListener('dragleave', () => el.classList.remove('drag'));
+      el.addEventListener('drop', e => { e.preventDefault(); el.classList.remove('drag'); const f = e.dataTransfer.files[0]; if (f) (isXlsx(f) ? ingestEntityXlsx(ent, f) : ingest(ent, f)); });
+    });
+    document.querySelectorAll('[data-remove]').forEach(b => b.onclick = e => { e.stopPropagation(); Store.removeTB(e.target.dataset.remove, activePeriod); renderAll(); });
+  }
+
+  $('fileInput').onchange = e => { const f = e.target.files[0]; if (f && pendingEntity) (isXlsx(f) ? ingestEntityXlsx(pendingEntity, f) : ingest(pendingEntity, f)); e.target.value = ''; };
+  $('wbInput').onchange = e => { if (e.target.files[0]) ingestWorkbook(e.target.files[0]); e.target.value = ''; };
+  $('wbDrop').onclick = () => $('wbInput').click();
+  $('wbDrop').addEventListener('dragover', e => { e.preventDefault(); $('wbDrop').classList.add('drag'); });
+  $('wbDrop').addEventListener('dragleave', () => $('wbDrop').classList.remove('drag'));
+  $('wbDrop').addEventListener('drop', e => { e.preventDefault(); $('wbDrop').classList.remove('drag'); const f = e.dataTransfer.files[0]; if (f) ingestWorkbook(f); });
+  $('filterSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
+    filter = b.dataset.f; $('filterSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); renderAll();
+  });
+  $('sampleBtn').onclick = loadSamples;
+  $('nextBtn').onclick = () => { location.href = 'mapping.html'; };
+  $('themeBtn').onclick = () => { const r = document.documentElement; r.setAttribute('data-theme', r.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'); };
+
+  renderPeriodSwitcher();
+  renderAll();
+  renderPeriods();
+})();

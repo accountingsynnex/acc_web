@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="th" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FS Close Workspace — งบทดลองรวม (Trial Balance)</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="tb">
+<div class="bg"><i></i></div>
+<div class="app">
+  <aside class="side" id="side"></aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="crumb">Close cycle · <b>Trial Balance</b></div>
+      <div class="spacer"></div>
+      <span class="selectish"><small>งวด</small> มิ.ย. 2026</span>
+      <button class="iconbtn" id="themeBtn" title="สลับโหมดสว่าง/มืด" aria-label="Toggle theme">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg>
+      </button>
+      <button class="btn" id="nextBtn"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>ไปหน้างบการเงิน</button>
+    </div>
+
+    <div class="content">
+      <div class="page-head">
+        <h1>งบทดลองรวม (Combining Trial Balance)</h1>
+        <p>ยอดคงเหลือของทุกบัญชี แยกตามบริษัทและรวมทั้งกลุ่ม จัดกลุ่มตาม Rulebook อัตโนมัติ — คลิกหัวข้อเพื่อกรอง หรือค้นหารหัส/ชื่อบัญชี</p>
+      </div>
+
+      <div class="tiles" id="tiles"></div>
+
+      <section>
+        <div class="toolbar">
+          <div class="search">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+            <input id="q" placeholder="ค้นหารหัสหรือชื่อบัญชี…" />
+          </div>
+          <select class="filtersel" id="fStatement"><option value="all">ทุกงบ</option><option value="BS">งบดุล (BS)</option><option value="PL">งบกำไรขาดทุน (PL)</option></select>
+          <select class="filtersel" id="fStatus"><option value="all">ทุกสถานะ</option><option value="mapped">จัดกลุ่มแล้ว</option><option value="new">รหัสใหม่</option></select>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h3>บัญชีทั้งหมด</h3><span class="sub" id="countSub"></span></div>
+          <div class="tbl-wrap"><table id="tbTable"></table></div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script src="../engine/rulebook.js"></script>
+<script src="../engine/group-engine.js"></script>
+<script src="store.js"></script>
+<script src="shell.js"></script>
+<script src="tb.js"></script>
+</body>
+</html>

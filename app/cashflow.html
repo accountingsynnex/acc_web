@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="th" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FS Close Workspace — งบกระแสเงินสด (Cash Flow)</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="cashflow">
+<div class="bg"><i></i></div>
+<div class="app">
+  <aside class="side" id="side"></aside>
+  <div class="main">
+    <div class="topbar">
+      <div class="crumb">Output · <b>Cash Flow</b></div>
+      <div class="spacer"></div>
+      <span class="selectish"><small>งวด</small> มิ.ย. 2026</span>
+      <button class="iconbtn" id="themeBtn" title="สลับโหมดสว่าง/มืด" aria-label="Toggle theme"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg></button>
+    </div>
+    <div class="content">
+      <div class="page-head"><h1>งบกระแสเงินสด (วิธีทางอ้อม) — ประมาณการ</h1><p>คำนวณสดจากงบที่นำเข้า เทียบกับยอดยกมา (Opening balance) ของไฟล์เดียวกัน — <b>เป็นการประมาณ ไม่ใช่ตัวเลขที่ผ่านการตรวจสอบ</b> รายการที่ต้องใช้ schedule แยก (เช่น แยกซื้อ/ขายสินทรัพย์ถาวรแบบ gross, เงินปันผลค้างรับ) หรือนโยบายจัดประเภทเฉพาะบริษัท (เช่น trade finance) จะรวมอยู่ในบรรทัด "ผลต่างที่ยังไม่ระบุ" ท้ายงบ ไม่ได้ปัดออกไปไหน</p></div>
+      <div id="banner"></div>
+      <div class="panel"><div class="tbl-wrap"><table class="stmt" id="cf"></table></div></div>
+    </div>
+  </div>
+</div>
+<script src="../engine/rulebook.js"></script>
+<script src="../engine/group-engine.js"></script>
+<script src="store.js"></script>
+<script src="fs.js"></script>
+<script src="../engine/cashflow-engine.js"></script>
+<script src="shell.js"></script>
+<script src="cashflow.js"></script>
+</body>
+</html>

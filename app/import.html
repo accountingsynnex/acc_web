@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="th" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FS Close Workspace — นำเข้างบทดลอง</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body data-page="import">
+<div class="bg"><i></i></div>
+<div class="app">
+  <aside class="side" id="side"></aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="crumb">Close cycle · <b>Import TB</b></div>
+      <div class="spacer"></div>
+      <button class="linkish" id="sampleBtn" style="text-decoration:none">ลองข้อมูลตัวอย่าง</button>
+      <span class="selectish"><small>งวด</small> มิ.ย. 2026</span>
+      <button class="iconbtn" id="themeBtn" title="สลับโหมดสว่าง/มืด" aria-label="Toggle theme">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg>
+      </button>
+      <button class="btn" id="nextBtn"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>ไปหน้า Mapping</button>
+    </div>
+
+    <div class="content">
+      <div class="page-head">
+        <h1>นำเข้างบทดลอง แล้วให้ระบบจัดกลุ่มให้</h1>
+        <p>โยนไฟล์ Workpaper งบรวมทั้งไฟล์ (.xlsx) ไฟล์เดียว ระบบแยก TB รายบริษัทให้เอง — หรือใส่ทีละบริษัทเป็น CSV ก็ได้ จากนั้นจับคู่รหัสกับ Rulebook แล้วจัด statement / section / group อัตโนมัติ คุณตรวจเฉพาะรหัสใหม่ที่ยังไม่เคยเจอเท่านั้น</p>
+      </div>
+
+      <section>
+        <h2 class="sec">นำเข้าไฟล์</h2>
+        <div class="fld" style="max-width:320px;margin-bottom:12px">
+          <label>กำลังนำเข้าให้งวด</label>
+          <select id="periodSwitcher"></select>
+        </div>
+        <div id="periodSwitcherNote" class="muted" style="display:none;font-size:12.5px;margin:-4px 0 12px"></div>
+        <button class="wb-drop" id="wbDrop">
+          <span class="wbico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 9v11M4 14h16"/></svg></span>
+          <span style="min-width:0;flex:1"><span class="wbt" id="wbT">อัปโหลด Workpaper ทั้งไฟล์ (.xlsx)</span><span class="wbd" id="wbD">ลากไฟล์งบ Conso ทั้งไฟล์มาวาง — ระบบแยก TB ทุกบริษัท (SYN · SVP · SYNIN · SWOP) ให้อัตโนมัติ</span><span class="wb-loadbar" id="wbLoad"><span></span></span></span>
+          <span class="wbtag">แยกให้อัตโนมัติ</span>
+        </button>
+        <input type="file" id="wbInput" class="sr-only" accept=".xlsx,.xls" />
+        <div class="wb-or">หรือใส่ทีละบริษัท (CSV)</div>
+        <div class="uploads" id="uploads"></div>
+        <input type="file" id="fileInput" class="sr-only" accept=".csv,.tsv,.txt,.xlsx,.xls" />
+      </section>
+
+      <section>
+        <h2 class="sec">สรุปผลการจัดกลุ่มอัตโนมัติ</h2>
+        <div class="tiles" id="tiles"></div>
+      </section>
+
+      <section>
+        <div class="panel">
+          <div class="panel-head">
+            <h3>ผลการจัดกลุ่ม</h3>
+            <span class="sub" id="resultSub">ยอดรวมก่อนตัดรายการ (Combining)</span>
+            <div class="spacer" style="margin-left:auto"></div>
+            <div class="seg" id="filterSeg">
+              <button class="on" data-f="all">ทั้งหมด</button>
+              <button data-f="new">รหัสใหม่ · 0</button>
+            </div>
+          </div>
+          <div class="tbl-wrap"><table>
+            <thead><tr><th>รหัส</th><th>ชื่อบัญชี</th><th class="r">ยอดคงเหลือ (บาท)</th><th>จัดเข้ากลุ่ม (อัตโนมัติ)</th><th>สถานะ</th></tr></thead>
+            <tbody id="rows"></tbody>
+          </table></div>
+        </div>
+        <div class="demo-note" id="journalNote" style="display:none"></div>
+      </section>
+
+      <div class="callout" id="callout" style="display:none">
+        <svg class="ic" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 9v4m0 4h.01M10.3 3.9L2 18a2 2 0 001.7 3h16.6a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg>
+        <div class="txt" id="calloutTxt"></div>
+      </div>
+
+      <section>
+        <h2 class="sec">งวดที่บันทึกไว้</h2>
+        <p class="muted" style="margin:-6px 0 14px;font-size:12.5px">บันทึกงวดนี้เก็บไว้ เพื่อใช้ดูแนวโน้มรายไตรมาสในหน้า Ratios (ทั้ง 3 แท็บ — ต้องมีอย่างน้อย 2 งวดรวมงวดปัจจุบันถึงจะเห็นกราฟ) — บันทึกแยกจากงวดปัจจุบันที่ทำงานอยู่ ไม่ทับกัน</p>
+        <div class="panel" style="padding:16px 17px">
+          <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+            <div class="fld" style="width:150px"><label>รหัสงวด</label><input type="text" id="periodKey" placeholder="เช่น 2026-06" /></div>
+            <div class="fld" style="width:220px"><label>ชื่องวด</label><input type="text" id="periodLabel" placeholder="เช่น มิ.ย. 2569 (H1)" /></div>
+            <button class="btn" id="archiveBtn">บันทึกงวดนี้</button>
+          </div>
+          <div class="tbl-wrap" style="margin-top:14px"><table id="periodsTbl"></table></div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="../engine/rulebook.js"></script>
+<script src="../engine/group-engine.js"></script>
+<script src="store.js"></script>
+<script src="samples.js"></script>
+<script src="shell.js"></script>
+<script src="import.js"></script>
+</body>
+</html>
