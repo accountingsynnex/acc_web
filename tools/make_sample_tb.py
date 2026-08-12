@@ -63,6 +63,16 @@ EQUITY_FIXED = {
     "3151000": -40_000_000,      # legal reserve
 }
 RETAINED_CODE = "3159000"        # the plug that makes the TB net to zero
+
+# Which accounts sit on the credit side regardless of the section they're
+# presented in: the 2/3/4/7 code ranges, plus the contra accounts that live
+# inside an asset section (provisions, accumulated depreciation).
+CREDIT_PREFIXES = ("2", "3", "4", "7")
+CONTRA_NAME = re.compile(r"PROVISION|ALLOWANCE|ACCUMULAT|DEFERRED INTEREST", re.I)
+
+
+def is_credit(code, name):
+    return bool(CONTRA_NAME.search(name or "")) or code[0] in CREDIT_PREFIXES
 SCALE = 6_400_000_000            # revenue of the largest entity
 
 
@@ -104,26 +114,43 @@ def build_entity(rng, rules, scale, share, with_departments):
         rows.append((code, rules[code]["name"], round(opening, 2), round(closing, 2)))
         total += round(closing, 2)
 
-    def spread(section, target, allow_negative=False):
+    def spread(section, target):
         """Split `target` across a section's codes with an uneven, but
         deterministic, distribution — a few large accounts and a long tail,
-        the way a real ledger looks."""
+        the way a real ledger looks.
+
+        Sections aren't uniformly one-sided: the revenue section carries
+        contra-revenue accounts that are debits, asset sections carry
+        provisions and accumulated depreciation that are credits. Signing
+        purely by section would have put the contra-revenue accounts (which
+        share the 6xxxxxx expense range) on the wrong side and made the Cost
+        Center page's expense total negative. So split each section into its
+        debit- and credit-natured codes, give the section's own side a bit
+        more than the target and the contra side the remainder."""
         codes = pick(rng, by_section.get(section, []), share)
         if not codes:
             return
-        weights = [rng.random() ** 2.5 + 0.01 for _ in codes]
-        s = sum(weights)
-        for code, w in zip(codes, weights):
-            amt = target * w / s
-            if allow_negative and rng.random() < 0.08:
-                amt = -amt * rng.uniform(0.02, 0.15)
-            drift = rng.uniform(0.82, 1.18)          # opening differs from closing
-            emit(code, amt * drift, amt)
+        debit = [c for c in codes if not is_credit(c, rules[c]["name"])]
+        credit = [c for c in codes if is_credit(c, rules[c]["name"])]
+        contra = 0.06
+        if target < 0:                      # credit-natured section
+            totals = [(credit, target * (1 + contra)), (debit, -target * contra)]
+        else:                               # debit-natured section
+            totals = [(debit, target * (1 + contra)), (credit, -target * contra)]
+        for group, group_total in totals:
+            if not group:
+                continue
+            weights = [rng.random() ** 2.5 + 0.01 for _ in group]
+            s = sum(weights)
+            for code, w in zip(group, weights):
+                amt = group_total * w / s
+                drift = rng.uniform(0.82, 1.18)      # opening differs from closing
+                emit(code, amt * drift, amt)
 
     for section, weight in ASSET_SECTIONS.items():
-        spread(section, scale * 0.42 * weight, allow_negative=True)
+        spread(section, scale * 0.42 * weight)
     for section, weight in LIAB_SECTIONS.items():
-        spread(section, scale * 0.42 * weight, allow_negative=True)
+        spread(section, scale * 0.42 * weight)
     for section, weight in PL_WEIGHTS.items():
         spread(section, scale * weight)
 
