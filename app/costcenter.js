@@ -102,7 +102,7 @@
     }
     $('overrunPanel').style.display = ''; $('deptPanel').style.display = '';
 
-    const { rows, deptNames } = Store.deptRows();
+    const { rows, deptNames, sources } = Store.deptRows();
     const budgetRec = Store.budget();
     const bmap = budgetRec && budgetRec.map;
     const expense = rows.filter(r => isExpense(r.code));
@@ -143,10 +143,14 @@
     const totalBudget = depts.reduce((s, d) => s + d.budget, 0);
     const hasBudget = !!bmap;
 
+    // Name the sheet the department detail came from: it's often a separate
+    // sheet from the entity's own TB, and can therefore be a different
+    // period than the rest of the app is showing.
+    const srcNote = sources && sources.length ? ` — มิติแผนกจากชีต <b>${esc(sources.join(', '))}</b>` : '';
     $('banner').innerHTML = hasBudget
-      ? `<div class="check ok" style="margin-bottom:18px"><div class="ico">✓</div><div><div class="t">คำนวณสดจากงบทดลองรายแผนกที่นำเข้า</div>
+      ? `<div class="check ok" style="margin-bottom:18px"><div class="ico">✓</div><div><div class="t">คำนวณสดจากงบทดลองรายแผนกที่นำเข้า${srcNote}</div>
           <div class="d">Budget จากไฟล์ <b>${esc(budgetRec.fileName)}</b> — <button class="linkish" id="clearBudgetBtn">ล้าง Budget</button></div></div></div>`
-      : `<div class="check no" style="margin-bottom:18px"><div class="ico">!</div><div><div class="t">ยังไม่ได้นำเข้า Budget — แสดงเฉพาะ Actual</div>
+      : `<div class="check no" style="margin-bottom:18px"><div class="ico">!</div><div><div class="t">ยังไม่ได้นำเข้า Budget — แสดงเฉพาะ Actual${srcNote}</div>
           <div class="d">กด <b>นำเข้า Budget</b> ด้านบนขวา แล้วเลือกไฟล์ CSV/Excel ที่มีคอลัมน์ <b>แผนก</b> + <b>งบประมาณ</b> (ใส่คอลัมน์ <b>รหัสบัญชี</b> ด้วยก็ได้ ถ้าอยากเทียบระดับบัญชี)</div></div></div>`;
     const clearBtn = $('clearBudgetBtn');
     if (clearBtn) clearBtn.onclick = () => { Store.clearBudget(); render(); };

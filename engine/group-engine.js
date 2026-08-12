@@ -46,12 +46,31 @@ function findCol(headers, needles) {
    parser and the Excel importer. Returns { code, name, closing } — closing
    signed (debit +, credit -). Column positions are detected by header name,
    so it copes with the different TB sheet layouts in the workpaper. */
+const CODE_HEADERS = ['mainaccount', 'account code', 'account no', 'account', 'code', 'รหัส'];
+const AMOUNT_HEADERS = ['closing', 'ending', 'balance', 'ยอดคงเหลือ', 'คงเหลือ'];
+
+/* Which row holds the header. Usually row 0, but department/cost-centre
+   exports out of the workpaper carry a spacer or check row above it, and
+   reading that as the header finds no columns at all. Scan a few rows for
+   one that has both a code column and something to read an amount from. */
+function findHeaderRow(matrix) {
+  for (let i = 0; i < Math.min(matrix.length, 12); i++) {
+    const h = matrix[i] || [];
+    if (findCol(h, CODE_HEADERS) === -1) continue;
+    const hasAmount = findCol(h, AMOUNT_HEADERS) !== -1
+      || (findCol(h, ['debit', 'เดบิต']) !== -1 && findCol(h, ['credit', 'เครดิต']) !== -1);
+    if (hasAmount) return i;
+  }
+  return 0;
+}
+
 function buildRows(matrix) {
-  if (!matrix || !matrix.length) return { rows: [], columns: null };
-  const headers = matrix[0];
-  const ci = findCol(headers, ['mainaccount', 'account code', 'account no', 'account', 'code', 'รหัส']);
+  if (!matrix || !matrix.length) return { rows: [], deptRows: [], columns: null };
+  const headerRow = findHeaderRow(matrix);
+  const headers = matrix[headerRow];
+  const ci = findCol(headers, CODE_HEADERS);
   const ni = findCol(headers, ['name', 'description', 'ชื่อ']);
-  const cli = findCol(headers, ['closing', 'ending', 'balance', 'ยอดคงเหลือ', 'คงเหลือ']);
+  const cli = findCol(headers, AMOUNT_HEADERS);
   const oi = findCol(headers, ['opening', 'beginning', 'ยอดยกมา', 'ยกมา', 'ต้นงวด']);
   const di = findCol(headers, ['debit', 'เดบิต']);
   const cri = findCol(headers, ['credit', 'เครดิต']);
@@ -70,7 +89,7 @@ function buildRows(matrix) {
   // caller keeps seeing exactly one row per account code. Empty unless the
   // export actually carries a department dimension.
   const deptRows = [];
-  for (let r = 1; r < matrix.length; r++) {
+  for (let r = headerRow + 1; r < matrix.length; r++) {
     const cells = matrix[r] || [];
     const code = String(cells[ci] == null ? '' : cells[ci]).trim();
     if (!/^\d{3,}$/.test(code)) continue;                // skip totals / blank / notes

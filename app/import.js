@@ -92,8 +92,20 @@
       try {
         // Parse only the entity TB + journal sheets and cap rows — the workbook
         // is ~25 MB and TB SYN spans Excel's full 1M-row range, so this keeps
-        // it to ~6s.
-        const wanted = ENTITIES.map(e => 'TB ' + e.code.toUpperCase()).concat(JOURNAL_SHEETS);
+        // it to ~6s. The department-level TB lives in its own sheet whose name
+        // we can't know up front ("TB SYN_TW" beside "TB SYN"), so read the
+        // sheet names first — bookSheets skips worksheet parsing, so it's
+        // cheap — and add any suffixed variant to the list before the real
+        // read. Without this the department sheet is never parsed at all and
+        // the Cost Center page has nothing to show.
+        const names = XLSX.read(new Uint8Array(reader.result), { type: 'array', bookSheets: true }).SheetNames || [];
+        const normName = n => String(n).trim().replace(/\s+/g, ' ').toUpperCase();
+        const bases = ENTITIES.map(e => 'TB ' + e.code.toUpperCase());
+        const variants = names.filter(n => {
+          const u = normName(n);
+          return bases.some(base => u !== base && u.startsWith(base) && /^[ _-]/.test(u.slice(base.length)));
+        });
+        const wanted = bases.concat(variants).concat(JOURNAL_SHEETS);
         const wb = XLSX.read(new Uint8Array(reader.result), {
           type: 'array', sheets: wanted, sheetRows: 5000,
           cellStyles: false, cellFormula: false, cellHTML: false, cellNF: false, bookVBA: false,
@@ -101,11 +113,27 @@
         const norm = s => String(s).trim().replace(/\s+/g, ' ').toUpperCase();
         const added = [];
         for (const ent of ENTITIES) {
-          const sheetName = wb.SheetNames.find(n => norm(n) === 'TB ' + ent.code.toUpperCase());
+          const base = 'TB ' + ent.code.toUpperCase();
+          const sheetName = wb.SheetNames.find(n => norm(n) === base);
           if (!sheetName) continue;
-          const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, raw: true, defval: null });
-          const { rows, deptRows } = buildRows(aoa);
-          if (rows.length) { Store.setTB(ent.code, file.name + ' › ' + sheetName, rows, activePeriod, deptRows); added.push(ent.code); }
+          const read = n => buildRows(XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: null }));
+          const { rows, deptRows } = read(sheetName);
+          // The department dimension usually lives in its own sheet next to
+          // the entity's TB ("TB SYN_TW" beside "TB SYN"), so also pick up a
+          // suffixed variant. The separator check matters: without it "TB
+          // SYNIN" would look like a variant of "TB SYN".
+          let dept = deptRows, deptSource = deptRows.length ? sheetName : '';
+          if (!dept.length) {
+            const variant = wb.SheetNames.find(n => {
+              const u = norm(n);
+              return u !== base && u.startsWith(base) && /^[ _-]/.test(u.slice(base.length));
+            });
+            if (variant) {
+              const got = read(variant);
+              if (got.deptRows.length) { dept = got.deptRows; deptSource = variant; }
+            }
+          }
+          if (rows.length) { Store.setTB(ent.code, file.name + ' › ' + sheetName, rows, activePeriod, dept, deptSource); added.push(ent.code); }
         }
         if (!added.length) alert('ไม่พบชีต TB รายบริษัท (TB SYN / TB SVP / TB SYNIN / TB SWOP) ในไฟล์นี้');
 
