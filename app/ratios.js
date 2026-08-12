@@ -22,30 +22,26 @@
   const fmt = (v, unit) => v == null ? '—' : (unit === 'x' ? v.toFixed(2) + '×' : unit === 'pct' ? v.toFixed(1) + '%' : unit === 'days' ? v.toFixed(1) + ' วัน' : v.toFixed(2));
   const M = n => (n / 1e6).toLocaleString('en-US', { maximumFractionDigits: 0 }) + 'M';
 
-  // SET tab basis toggle — 2 named bases: "รายไตรมาส" annualizes a quarter's
-  // flow ×4 (assumes the imported TB covers 3 months), "เต็มปี" takes the
-  // flow as-is (assumes the imported TB already covers a full year). Only
-  // SET's ROA/ROE/Asset Turnover formula needs this (it pairs a flow
-  // against an average balance, so it has to know the period length to
-  // annualize) — Thailand/Taiwan's own formulas don't average that way, so
-  // they have no equivalent toggle.
-  let setBasis = 'quarter';
-  // How many months the imported TB covers. Every cash-cycle formula here
-  // turns a balance into days by dividing by a flow, so all three tabs need
-  // it and it's a property of the imported file, not of a tab — one shared
-  // value, with an input on each tab that reads and writes it.
-  let periodMonths = 3;
-
-  // Thailand ("Synnex KPI" in the company's own comparison chart) and SET's
-  // real cash-cycle formulas both divide by revenue/COGS over the trailing
-  // 12 months — Thailand also averages the balance against the SAME quarter
-  // one year ago, SET uses the ending balance. Both need the same 2 saved
-  // periods (Import → "งวดที่บันทึกไว้"): the same quarter one year ago, and
-  // the most recently completed full fiscal year — from which trailing
-  // revenue/COGS = FY total − that year-ago YTD + this period's own YTD.
-  // Until both are saved they fall back to annualising the imported
-  // period's own revenue/COGS, which is an approximation and says so.
-  let cycleTtmPriorYear = '', cycleTtmFY = '';
+  // Which period the imported figures cover — ONE control, identical on all
+  // 3 tabs (Q1 · Q2 · Q3 · Q4 · ทั้งปี), replacing both the free-typed month
+  // count and SET's separate รายไตรมาส/เต็มปี toggle. It's a property of the
+  // imported file, not of a tab, so the three toggles share one value.
+  //
+  // P&L accounts in a trial balance read cumulative since the start of the
+  // fiscal year, so the quarter picked IS the month count: at Q2 the P&L
+  // already carries 6 months. That's what both things the toggle drives
+  // need — turning a balance into days (every tab's cash cycle) and
+  // annualising a flow (SET's ROA/ROE/Asset Turnover) — so picking the
+  // quarter now determines them exactly instead of by a typed guess.
+  const PERIOD_OPTS = [
+    { key: 'q1', label: 'Q1', months: 3 },
+    { key: 'q2', label: 'Q2', months: 6 },
+    { key: 'q3', label: 'Q3', months: 9 },
+    { key: 'q4', label: 'Q4', months: 12 },
+    { key: 'fy', label: 'ทั้งปี', months: 12 },
+  ];
+  let periodSel = 'q1';
+  const periodOpt = () => PERIOD_OPTS.find(o => o.key === periodSel) || PERIOD_OPTS[0];
 
   // The single ordered ratio list shared by all 3 tabs — group label, a
   // stable key (used by computeTabMetrics, the trend table and the trend
@@ -145,36 +141,20 @@
 
     if (tab === 'th') {
       const months = ctx.periodMonths || 3;
-      // Real "Synnex KPI" formula (the company's own cash-cycle comparison
-      // chart): average the balance against the SAME quarter one year ago,
-      // divide by revenue/COGS over the trailing 12 months. Falls back to
-      // annualising the imported period's own flow (an approximation,
-      // disclosed as such) until both reference periods are saved.
-      let arDays, invDays, apDays, arF, invF, apF;
-      if (ctx.ttmRevenue && ctx.ttmCogs && ctx.priorBsCycle) {
-        const priorAR = groupIn(ctx.priorBsCycle.assets, 'Current Assets', 'Trade receivables');
-        const priorInv = groupIn(ctx.priorBsCycle.assets, 'Current Assets', 'Inventories');
-        const priorAP = groupIn(ctx.priorBsCycle.liab, 'Current Liabilities', 'Trade payable');
-        const avgARyoy = (grossAR + priorAR) / 2, avgInvYoy = (inventory + priorInv) / 2, avgAPyoy = (tradeAP + priorAP) / 2;
-        const ttmCogsAbs = Math.abs(ctx.ttmCogs);
-        arDays = avgARyoy / ctx.ttmRevenue * 365;
-        invDays = avgInvYoy / ttmCogsAbs * 365;
-        apDays = avgAPyoy / ttmCogsAbs * 365;
-        arF = `ลูกหนี้การค้าเฉลี่ย(เทียบปีก่อน) ${M(avgARyoy)} ÷ รายได้ 12 เดือนล่าสุด ${M(ctx.ttmRevenue)} × 365 ✓ สูตรจริงจากผัง Synnex KPI`;
-        invF = `สินค้าคงเหลือเฉลี่ย(เทียบปีก่อน) ${M(avgInvYoy)} ÷ ต้นทุนขาย 12 เดือนล่าสุด ${M(ttmCogsAbs)} × 365 ✓ สูตรจริงจากผัง Synnex KPI`;
-        apF = `เจ้าหนี้การค้าเฉลี่ย(เทียบปีก่อน) ${M(avgAPyoy)} ÷ ต้นทุนขาย 12 เดือนล่าสุด ${M(ttmCogsAbs)} × 365 ✓ สูตรจริงจากผัง Synnex KPI`;
-      } else {
-        // No reference periods saved yet: annualise the imported period's own
-        // revenue/COGS. Same shape as the real formula, just a rougher flow.
-        const days = 365 * months / 12, cogsAbs = Math.abs(mpl.cogs);
-        arDays = mpl.revenue ? grossAR / mpl.revenue * days : null;
-        invDays = cogsAbs ? inventory / cogsAbs * days : null;
-        apDays = cogsAbs ? tradeAP / cogsAbs * days : null;
-        const note = `(ประมาณจากงบ ${months} เดือนที่นำเข้า — ยังไม่ได้เลือกงวดปีก่อน+งบเต็มปีล่าสุด)`;
-        arF = `ลูกหนี้การค้า ${M(grossAR)} ÷ รายได้ × ${days.toFixed(2)} ${note}`;
-        invF = `สินค้าคงเหลือ ${M(inventory)} ÷ ต้นทุนขาย × ${days.toFixed(2)} ${note}`;
-        apF = `เจ้าหนี้การค้า ${M(tradeAP)} ÷ ต้นทุนขาย × ${days.toFixed(2)} ${note}`;
-      }
+      // "Synnex KPI" (the company's own cash-cycle comparison chart) divides
+      // by revenue/COGS over the trailing 12 months. The selected quarter
+      // says how many months of flow the imported P&L carries, so the same
+      // shape falls out of the file itself: ending balance ÷ flow-to-date
+      // × the days those months represent. It differs from a true trailing
+      // 12 months when the year is seasonal, which the card says outright.
+      const days = 365 * months / 12, cogsAbs = Math.abs(mpl.cogs);
+      const arDays = mpl.revenue ? grossAR / mpl.revenue * days : null;
+      const invDays = cogsAbs ? inventory / cogsAbs * days : null;
+      const apDays = cogsAbs ? tradeAP / cogsAbs * days : null;
+      const note = `(งบ ${ctx.periodLabel || ''} = ${months} เดือนสะสม — ผัง Synnex KPI จริงใช้ยอดเฉลี่ยเทียบงวดเดียวกันปีก่อน ÷ รายได้ 12 เดือนล่าสุด)`;
+      const arF = `ลูกหนี้การค้า ${M(grossAR)} ÷ รายได้ × ${days.toFixed(2)} วัน ${note}`;
+      const invF = `สินค้าคงเหลือ ${M(inventory)} ÷ ต้นทุนขาย × ${days.toFixed(2)} วัน ${note}`;
+      const apF = `เจ้าหนี้การค้า ${M(tradeAP)} ÷ ต้นทุนขาย × ${days.toFixed(2)} วัน ${note}`;
       return {
         arDays: { value: arDays, formula: arF },
         invDays: { value: invDays, formula: invF },
@@ -210,11 +190,12 @@
       const arVendorDays = mpl.revenue ? avgVAR / mpl.revenue * dayMultiplier : null;
       const ccc = [arDays, invDays, apDays, arVendorDays].every(v => v != null) ? arDays + invDays - apDays + arVendorDays : null;
       const avgNote = ctx.avgNote || '';
+      const pNote = `(งบ ${ctx.periodLabel || ''} = ${months} เดือนสะสม)`;
       return {
-        arDays: { value: arDays, formula: `ลูกหนี้การค้าเฉลี่ย ${M(avgAR)} ÷ รายได้ × ${dayMultiplier.toFixed(2)} ✓ สูตรจริงจาก PAR/NROIC` },
-        arVendorDays: { value: arVendorDays, formula: `ลูกหนี้เคลม vendor เฉลี่ย ${M(avgVAR)} ÷ รายได้ × ${dayMultiplier.toFixed(2)} ✓ สูตรจริงจาก PAR/NROIC` },
-        invDays: { value: invDays, formula: `สินค้าคงเหลือเฉลี่ย ${M(avgInv)} ÷ ต้นทุนขาย × ${dayMultiplier.toFixed(2)} ✓ สูตรจริงจาก PAR/NROIC` },
-        apDays: { value: apDays, formula: `เจ้าหนี้การค้าเฉลี่ย ${M(avgAP)} ÷ ต้นทุนขาย × ${dayMultiplier.toFixed(2)} ✓ สูตรจริงจาก PAR/NROIC` },
+        arDays: { value: arDays, formula: `ลูกหนี้การค้าเฉลี่ย ${M(avgAR)} ÷ รายได้ × ${dayMultiplier.toFixed(2)} วัน ✓ สูตรจริงจาก PAR/NROIC ${pNote}` },
+        arVendorDays: { value: arVendorDays, formula: `ลูกหนี้เคลม vendor เฉลี่ย ${M(avgVAR)} ÷ รายได้ × ${dayMultiplier.toFixed(2)} วัน ✓ สูตรจริงจาก PAR/NROIC ${pNote}` },
+        invDays: { value: invDays, formula: `สินค้าคงเหลือเฉลี่ย ${M(avgInv)} ÷ ต้นทุนขาย × ${dayMultiplier.toFixed(2)} วัน ✓ สูตรจริงจาก PAR/NROIC ${pNote}` },
+        apDays: { value: apDays, formula: `เจ้าหนี้การค้าเฉลี่ย ${M(avgAP)} ÷ ต้นทุนขาย × ${dayMultiplier.toFixed(2)} วัน ✓ สูตรจริงจาก PAR/NROIC ${pNote}` },
         ccc: { value: ccc, formula: 'AR Days + AR Vendor Days + Inventory Days − AP Days (ค่าเฉลี่ยต้นงวด+ปลายงวด แทนยอดปลายงวดล้วน)' },
         currentRatio: { value: currentRatio, formula: 'สินทรัพย์หมุนเวียน ÷ หนี้สินหมุนเวียน (เหมือนวิธีบริษัท — ชีท KPI ใช้สูตรเดียวกัน)' },
         quickRatio: { value: CL ? (CA - inventory - prepayment) / CL : null, formula: `(สินทรัพย์หมุนเวียน − สินค้าคงเหลือ − เงินจ่ายล่วงหน้า ${M(prepayment)}) ÷ หนี้สินหมุนเวียน ✓ สูตรจริงจากชีท KPI` },
@@ -231,31 +212,21 @@
     }
 
     // set — real formula: ENDING balance (no averaging; AR includes Other
-    // Receivable) ÷ revenue/COGS over the trailing 12 months. Same 2
-    // reference periods as Thailand above; same fallback (the imported
-    // period's own flow, annualised) until both are saved.
+    // Receivable) ÷ revenue/COGS over the trailing 12 months. Same as
+    // Thailand above, the selected quarter supplies the months of flow the
+    // imported P&L carries, so the ×365 becomes ×(365 × months/12).
     const annualizeFactor = ctx.annualizeFactor || 1;
     const ytdNote = ctx.ytdNote || '';
     const avgNote = ctx.avgNote || '';
-    let arDays, invDays, apDays, arF, invF, apF;
-    if (ctx.ttmRevenue && ctx.ttmCogs) {
-      const ttmCogsAbs = Math.abs(ctx.ttmCogs);
-      arDays = (grossAR + otherReceivable) / ctx.ttmRevenue * 365;
-      invDays = inventory / ttmCogsAbs * 365;
-      apDays = tradeAP / ttmCogsAbs * 365;
-      arF = `ลูกหนี้การค้า + ลูกหนี้อื่น ${M(grossAR + otherReceivable)} (ปลายงวด) ÷ รายได้ 12 เดือนล่าสุด ${M(ctx.ttmRevenue)} × 365 ✓ สูตรจริงจาก SET`;
-      invF = `สินค้าคงเหลือ ${M(inventory)} (ปลายงวด) ÷ ต้นทุนขาย 12 เดือนล่าสุด ${M(ttmCogsAbs)} × 365 ✓ สูตรจริงจาก SET`;
-      apF = `เจ้าหนี้การค้า ${M(tradeAP)} (ปลายงวด) ÷ ต้นทุนขาย 12 เดือนล่าสุด ${M(ttmCogsAbs)} × 365 ✓ สูตรจริงจาก SET`;
-    } else {
-      const days = 365 * (ctx.periodMonths || 3) / 12, cogsAbsSet = Math.abs(mpl.cogs);
-      arDays = mpl.revenue ? (grossAR + otherReceivable) / mpl.revenue * days : null;
-      invDays = cogsAbsSet ? inventory / cogsAbsSet * days : null;
-      apDays = cogsAbsSet ? tradeAP / cogsAbsSet * days : null;
-      const noteSet = `(ปลายงวด, ประมาณจากงบ ${ctx.periodMonths || 3} เดือนที่นำเข้า — ยังไม่ได้เลือกงวดปีก่อน+งบเต็มปีล่าสุด)`;
-      arF = `ลูกหนี้การค้า + ลูกหนี้อื่น ${M(grossAR + otherReceivable)} ÷ รายได้ × ${days.toFixed(2)} ${noteSet}`;
-      invF = `สินค้าคงเหลือ ${M(inventory)} ÷ ต้นทุนขาย × ${days.toFixed(2)} ${noteSet}`;
-      apF = `เจ้าหนี้การค้า ${M(tradeAP)} ÷ ต้นทุนขาย × ${days.toFixed(2)} ${noteSet}`;
-    }
+    const monthsSet = ctx.periodMonths || 3;
+    const daysSet = 365 * monthsSet / 12, cogsAbsSet = Math.abs(mpl.cogs);
+    const arDays = mpl.revenue ? (grossAR + otherReceivable) / mpl.revenue * daysSet : null;
+    const invDays = cogsAbsSet ? inventory / cogsAbsSet * daysSet : null;
+    const apDays = cogsAbsSet ? tradeAP / cogsAbsSet * daysSet : null;
+    const noteSet = `(ยอดปลายงวด, งบ ${ctx.periodLabel || ''} = ${monthsSet} เดือนสะสม — SET จริงใช้รายได้/ต้นทุนขาย 12 เดือนล่าสุด)`;
+    const arF = `ลูกหนี้การค้า + ลูกหนี้อื่น ${M(grossAR + otherReceivable)} ÷ รายได้ × ${daysSet.toFixed(2)} วัน ${noteSet}`;
+    const invF = `สินค้าคงเหลือ ${M(inventory)} ÷ ต้นทุนขาย × ${daysSet.toFixed(2)} วัน ${noteSet}`;
+    const apF = `เจ้าหนี้การค้า ${M(tradeAP)} ÷ ต้นทุนขาย × ${daysSet.toFixed(2)} วัน ${noteSet}`;
     return {
       arDays: { value: arDays, formula: arF },
       invDays: { value: invDays, formula: invF },
@@ -348,28 +319,13 @@
       ? `ยอดเฉลี่ยต้นงวด+ปลายงวด (ยอดยกมาจากไฟล์ที่นำเข้า: ${M(openingBS.totalAssets)})`
       : '⚠ ไฟล์ที่นำเข้าไม่มีคอลัมน์ยอดยกมา (Opening balance) ใช้ยอดปลายงวดแทนค่าเฉลี่ย';
 
-    const annualizeFactor = setBasis === 'quarter' ? 4 : 1;
-    const ytdNote = setBasis === 'quarter' ? ` × annualize ${annualizeFactor.toFixed(2)} (3 เดือน→12)` : '';
+    const opt = periodOpt(), periodMonths = opt.months, periodLabel = opt.label;
+    const annualizeFactor = 12 / periodMonths;
+    const ytdNote = annualizeFactor > 1 ? ` × annualize ${annualizeFactor.toFixed(2)} (${periodMonths} เดือน→12)` : '';
 
-    // Cash-cycle's own reference periods (Thailand + SET both need trailing-
-    // 12-month revenue/COGS = latest full FY − same quarter last year (YTD)
-    // + this period (YTD); Thailand also needs that same-quarter-last-year
-    // balance to average against). Falls back inside computeTabMetrics to
-    // the imported period's own flow when either period isn't saved yet.
-    let ttmRevenue = null, ttmCogs = null, priorBsCycle = null;
-    const cyclePriorRows = cycleTtmPriorYear ? Store.periodCombinedRows(cycleTtmPriorYear) : null;
-    const cycleFyRows = cycleTtmFY ? Store.periodCombinedRows(cycleTtmFY) : null;
-    if (cyclePriorRows && cyclePriorRows.length && cycleFyRows && cycleFyRows.length) {
-      const priorG = FS.grouped(cyclePriorRows), priorBS = FS.buildBS(priorG), priorPL = FS.buildPL(priorG);
-      const fyPL = FS.buildPL(FS.grouped(cycleFyRows));
-      ttmRevenue = fyPL.revenue - priorPL.revenue + pl.revenue;
-      ttmCogs = fyPL.cogs - priorPL.cogs + pl.cogs;
-      priorBsCycle = priorBS;
-    }
-
-    renderTabCards('th', computeTabMetrics('th', bs, pl, null, { ttmRevenue, ttmCogs, priorBsCycle, periodMonths }));
-    renderTabCards('tw', computeTabMetrics('tw', bs, pl, openingBS, { periodMonths, avgNote }));
-    renderTabCards('set', computeTabMetrics('set', bs, pl, openingBS, { annualizeFactor, ytdNote, avgNote, ttmRevenue, ttmCogs, periodMonths }));
+    renderTabCards('th', computeTabMetrics('th', bs, pl, null, { periodMonths, periodLabel }));
+    renderTabCards('tw', computeTabMetrics('tw', bs, pl, openingBS, { periodMonths, periodLabel, avgNote }));
+    renderTabCards('set', computeTabMetrics('set', bs, pl, openingBS, { annualizeFactor, ytdNote, avgNote, periodMonths, periodLabel }));
 
     // ---- Quarterly trend ("แนวโน้มรายไตรมาส") on all 3 tabs — recomputes
     // every ratio above once per period saved via Import's "งวดที่บันทึกไว้"
@@ -392,9 +348,9 @@
     const perPoint = trendList.map((pt, i) => {
       const prevBs = i > 0 ? trendList[i - 1].bs : null;
       return {
-        th: computeTabMetrics('th', pt.bs, pt.pl, null, { periodMonths }),
-        tw: computeTabMetrics('tw', pt.bs, pt.pl, prevBs, { periodMonths }),
-        set: computeTabMetrics('set', pt.bs, pt.pl, prevBs, { annualizeFactor, periodMonths }),
+        th: computeTabMetrics('th', pt.bs, pt.pl, null, { periodMonths, periodLabel }),
+        tw: computeTabMetrics('tw', pt.bs, pt.pl, prevBs, { periodMonths, periodLabel }),
+        set: computeTabMetrics('set', pt.bs, pt.pl, prevBs, { annualizeFactor, periodMonths, periodLabel }),
       };
     });
 
@@ -424,45 +380,40 @@
     $('banner').innerHTML = `<div class="check ok" style="margin-bottom:14px"><div class="ico">✓</div><div><div class="t">คำนวณจากงบที่โรลอัปสด</div>
       <div class="d">DSCR และ LT Debt/EBITDA ต้องใช้ตารางกระแสเงินสด/เงินกู้ — ดูหน้า <a class="linkish" href="cashflow.html">Cash Flow</a></div></div></div>`;
 
-    $('setQuarterNote').style.display = setBasis === 'quarter' ? '' : 'none';
-    $('setFullyearNote').style.display = setBasis === 'fullyear' ? '' : 'none';
-    $('setBasisToggle').querySelectorAll('button').forEach(b => {
-      b.classList.toggle('on', b.dataset.basis === setBasis);
-      b.onclick = () => { setBasis = b.dataset.basis; render(); };
-    });
-    ['twMonths', 'thMonths', 'setMonths'].forEach(id => {
-      const el = $(id);
-      if (!el) return;
-      el.value = periodMonths;
-      el.oninput = e => {
-        const v = parseInt(e.target.value, 10);
-        if (v >= 1 && v <= 12) { periodMonths = v; render(); }
-      };
-    });
+  }
 
-    // Cash-cycle reference-period pickers — identical control shown on both
-    // Thailand and SET tabs (both formulas need the same 2 periods), kept
-    // in sync since they share the same module-level state.
-    const cyclePeriods = Store.listPeriods();
-    const cycleOpts = cyclePeriods.length
-      ? cyclePeriods.map(p => `<option value="${esc(p.key)}">${esc(p.label)}</option>`).join('')
-      : `<option value="">— ยังไม่มีงวดบันทึกไว้ —</option>`;
-    ['Th', 'Set'].forEach(suffix => {
-      const priorSel = $(`cycleTtmPriorYear${suffix}`), fySel = $(`cycleTtmFY${suffix}`);
-      if (!priorSel || !fySel) return;
-      priorSel.innerHTML = `<option value="">— เลือกงวด —</option>` + cycleOpts;
-      fySel.innerHTML = `<option value="">— เลือกงวด —</option>` + cycleOpts;
-      priorSel.value = cycleTtmPriorYear;
-      fySel.value = cycleTtmFY;
-      priorSel.onchange = e => { cycleTtmPriorYear = e.target.value; render(); };
-      fySel.onchange = e => { cycleTtmFY = e.target.value; render(); };
+  /* Paint the Q1..Q4/ทั้งปี toggle on all 3 tabs from the one shared value,
+     and write the note under each. Same control, same wording everywhere —
+     only the sentence about what it drives differs, because it genuinely
+     does: SET's ROA/ROE/Asset Turnover annualize, Thailand's and Taiwan's
+     don't (their sourced formulas use the YTD flow against an ending or
+     averaged balance without scaling it up). */
+  function renderPeriodSeg() {
+    const opt = periodOpt(), factor = 12 / opt.months;
+    document.querySelectorAll('[data-period-seg]').forEach(seg => {
+      seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.q === periodSel));
+    });
+    document.querySelectorAll('[data-period-note]').forEach(el => {
+      const tab = el.closest('.tab-panel').dataset.panel;
+      const extra = tab === 'set'
+        ? (factor > 1
+          ? ` และปรับ ROA/ROE/Total Asset Turnover เป็นรายปี <b>×${factor.toFixed(2)}</b>`
+          : ' และไม่ต้องปรับ ROA/ROE/Total Asset Turnover เป็นรายปี (เต็มปีแล้ว)')
+        : ' (ROA/ROE/Asset Turnover ของแท็บนี้ใช้ยอดสะสมตรงๆ ตามสูตรบริษัท ไม่ปรับเป็นรายปี)';
+      el.innerHTML = `เลือกงวดที่งบซึ่งนำเข้าครอบคลุม — งบทดลองสะสมกำไรขาดทุนตั้งแต่ต้นปีบัญชี <b>${esc(opt.label)}</b> จึงเท่ากับ <b>${opt.months} เดือน</b> ใช้แปลงยอดคงเหลือเป็นจำนวนวันในวงจรเงินสด${extra} — ค่านี้ใช้ร่วมกันทั้ง 3 แท็บ`;
     });
   }
 
   $('themeBtn').onclick = () => { const r = document.documentElement; r.setAttribute('data-theme', r.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'); };
+  document.querySelectorAll('[data-period-seg] button').forEach(b => b.onclick = () => {
+    periodSel = b.dataset.q;
+    renderPeriodSeg();
+    render();
+  });
   $('ratioTabs').querySelectorAll('button').forEach(b => b.onclick = () => {
     $('ratioTabs').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('on', p.dataset.panel === b.dataset.t));
   });
+  renderPeriodSeg();
   render();
 })();

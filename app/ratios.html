@@ -30,14 +30,14 @@
       <section class="tab-panel on" data-panel="th">
         <h2 class="sec">อัตราส่วนทางการเงิน — SYNNEX Thailand</h2>
         <p class="muted" style="margin:-6px 0 14px;font-size:12.5px">สูตรของบริษัทเอง (Conso/MD&amp;A) — ใช้ยอดปลายงวดล้วน ไม่มีค่าเฉลี่ย ไม่ต้อง annualize (ยกเว้นวงจรเงินสด ดูด้านล่าง)</p>
-        <div class="muted" style="margin:-2px 0 14px;font-size:12.5px">
-          <b>วงจรเงินสด</b> ("Synnex KPI" ในผังเทียบของบริษัท) เฉลี่ยยอดกับงวดเดียวกันปีก่อน ÷ รายได้/ต้นทุนขาย 12 เดือนล่าสุด — ต้อง<a class="linkish" href="import.html">บันทึกงวดไว้ที่หน้า Import</a>ก่อน ถ้ายังไม่ได้เลือก จะประมาณจากรายได้/ต้นทุนขายของงบที่นำเข้าเองแทน<br/>
-          งบที่นำเข้าครอบคลุม <input type="number" id="thMonths" min="1" max="12" value="3" style="width:46px;text-align:center"> เดือน (ใช้ร่วมกันทุกแท็บ)<br/>
-          <span style="display:inline-flex;gap:10px;margin-top:8px;flex-wrap:wrap">
-            <span>งวดเดียวกันปีก่อน: <select id="cycleTtmPriorYearTh"></select></span>
-            <span>งบเต็มปีล่าสุด: <select id="cycleTtmFYTh"></select></span>
-          </span>
+        <div class="seg" data-period-seg style="margin-bottom:10px">
+          <button class="on" data-q="q1">Q1</button>
+          <button data-q="q2">Q2</button>
+          <button data-q="q3">Q3</button>
+          <button data-q="q4">Q4</button>
+          <button data-q="fy">ทั้งปี</button>
         </div>
+        <div class="muted" data-period-note style="margin:-2px 0 14px;font-size:12.5px"></div>
         <div class="ratio-grid" id="th"></div>
         <h2 class="sec" style="margin-top:26px">แนวโน้มรายไตรมาส</h2>
         <p class="muted" style="margin:-6px 0 14px;font-size:12.5px">ใช้งวดที่บันทึกไว้ที่หน้า <a class="linkish" href="import.html">Import → งวดที่บันทึกไว้</a> เรียงเก่า→ใหม่ ต่อท้ายด้วยงวดปัจจุบัน — สูตรเดียวกับการ์ดด้านบนทุกตัว (วงจรเงินสดยังเป็นยอดปลายงวดล้วน ไม่เฉลี่ย)</p>
@@ -56,9 +56,14 @@
       <section class="tab-panel" data-panel="tw">
         <h2 class="sec">อัตราส่วนทางการเงิน — SYNNEX Taiwan</h2>
         <p class="muted" style="margin:-6px 0 14px;font-size:12.5px">วงจรเงินสด, Quick Ratio และ ROE เป็นสูตรจริงจากไฟล์ Synnex Thai PAR (แท็บ NROIC/KPI) — ใช้ค่าเฉลี่ยต้นงวด+ปลายงวดแทนยอดปลายงวดล้วน และมี <b>AR Vendor Days</b> เพิ่มเข้ามาในวงจรเงินสด (ลูกหนี้เคลม vendor — metric เฉพาะไต้หวัน ไม่มีแถวนี้ใน Thailand/SET) ส่วนที่เหลือยังไม่พบสูตรไต้หวันแยก จึงใช้แบบเดียวกับ Thailand (ระบุไว้ในช่อง "สูตร" ของแต่ละการ์ด)</p>
-        <div id="twMonthsWrap" style="margin:-2px 0 14px;font-size:12.5px" class="muted">
-          งบที่นำเข้าครอบคลุม <input type="number" id="twMonths" min="1" max="12" value="3" style="width:46px;text-align:center"> เดือน (ใช้ร่วมกันทุกแท็บ) — วงจรเงินสด annualize จากค่าเฉลี่ยรายเดือน×12 แล้วคูณ 365 วัน (สูตรจริงจาก PAR ต้องรู้จำนวนเดือนของงบที่นำเข้า — ถ้างบเป็นไตรมาส ใส่ 3)
+        <div class="seg" data-period-seg style="margin-bottom:10px">
+          <button class="on" data-q="q1">Q1</button>
+          <button data-q="q2">Q2</button>
+          <button data-q="q3">Q3</button>
+          <button data-q="q4">Q4</button>
+          <button data-q="fy">ทั้งปี</button>
         </div>
+        <div class="muted" data-period-note style="margin:-2px 0 14px;font-size:12.5px"></div>
         <div class="ratio-grid" id="tw"></div>
         <h2 class="sec" style="margin-top:26px">แนวโน้มรายไตรมาส</h2>
         <p class="muted" style="margin:-6px 0 14px;font-size:12.5px">ใช้งวดที่บันทึกไว้ที่หน้า <a class="linkish" href="import.html">Import → งวดที่บันทึกไว้</a> เรียงเก่า→ใหม่ ต่อท้ายด้วยงวดปัจจุบัน — วงจรเงินสดที่นี่เฉลี่ยกับ<b>งวดก่อนหน้าในตารางนี้ (เทียบกันแบบ chain)</b> ไม่ใช่คอลัมน์ยอดยกมาในไฟล์ที่นำเข้าแบบการ์ดด้านบน จุดแรกสุดจึงไม่มีค่าเฉลี่ยให้ใช้ (ใช้ยอดปลายงวดแทน)</p>
@@ -77,27 +82,17 @@
       <section class="tab-panel" data-panel="set">
         <h2 class="sec">อัตราส่วนทางการเงิน — SET</h2>
         <p class="muted" style="margin:-6px 0 14px;font-size:12.5px">วงจรเงินสด และ ROA/ROE/Total Asset Turnover เป็นสูตรจริงจากผังเทียบ "Synnex KPI / SET / Taiwan" ของบริษัทเอง — AR Days รวม "ลูกหนี้อื่น (Other Receivable)" เข้ากับลูกหนี้การค้าด้วย, ROA/ROE/Asset Turnover ใช้สินทรัพย์/ส่วนของผู้ถือหุ้นเฉลี่ย + ปรับเป็นรายปีตาม toggle ด้านล่าง ส่วนที่เหลือเหมือนวิธีของ Thailand (ไม่มีสูตร SET เฉพาะ)</p>
-        <div class="seg" id="setBasisToggle" style="margin-bottom:10px">
-          <button class="on" data-basis="quarter">รายไตรมาส</button>
-          <button data-basis="fullyear">เต็มปี</button>
+        <div class="seg" data-period-seg style="margin-bottom:10px">
+          <button class="on" data-q="q1">Q1</button>
+          <button data-q="q2">Q2</button>
+          <button data-q="q3">Q3</button>
+          <button data-q="q4">Q4</button>
+          <button data-q="fy">ทั้งปี</button>
         </div>
-        <div id="setQuarterNote" style="display:none;margin:-2px 0 14px;font-size:12.5px" class="muted">
-          สมมติงบที่นำเข้าครอบคลุม 3 เดือน — ROA/ROE/Asset Turnover annualize ×4 (เฉพาะ 3 ตัวนี้ — margin/D-E/สภาพคล่อง/วงจรเงินสดไม่เปลี่ยนตาม toggle นี้)
-        </div>
-        <div id="setFullyearNote" style="display:none;margin:-2px 0 14px;font-size:12.5px" class="muted">
-          สมมติงบที่นำเข้าครอบคลุมเต็มปีแล้ว — ROA/ROE/Asset Turnover ใช้ยอดตามที่นำเข้าตรงๆ ไม่ annualize
-        </div>
-        <div class="muted" style="margin:-2px 0 14px;font-size:12.5px">
-          <b>วงจรเงินสด</b> ใช้ยอดปลายงวดล้วน ÷ รายได้/ต้นทุนขาย 12 เดือนล่าสุด — ต้อง<a class="linkish" href="import.html">บันทึกงวดไว้ที่หน้า Import</a>ก่อน (งวดเดียวกันกับที่แท็บ Thailand ใช้) ถ้ายังไม่ได้เลือก จะประมาณจากรายได้/ต้นทุนขายของงบที่นำเข้าเองแทน<br/>
-          งบที่นำเข้าครอบคลุม <input type="number" id="setMonths" min="1" max="12" value="3" style="width:46px;text-align:center"> เดือน (ใช้ร่วมกันทุกแท็บ)<br/>
-          <span style="display:inline-flex;gap:10px;margin-top:8px;flex-wrap:wrap">
-            <span>งวดเดียวกันปีก่อน: <select id="cycleTtmPriorYearSet"></select></span>
-            <span>งบเต็มปีล่าสุด: <select id="cycleTtmFYSet"></select></span>
-          </span>
-        </div>
+        <div class="muted" data-period-note style="margin:-2px 0 14px;font-size:12.5px"></div>
         <div class="ratio-grid" id="set"></div>
         <h2 class="sec" style="margin-top:26px">แนวโน้มรายไตรมาส</h2>
-        <p class="muted" style="margin:-6px 0 14px;font-size:12.5px">ใช้งวดที่บันทึกไว้ที่หน้า <a class="linkish" href="import.html">Import → งวดที่บันทึกไว้</a> เรียงเก่า→ใหม่ ต่อท้ายด้วยงวดปัจจุบัน — ROA/ROE/Asset Turnover ใช้ตัวคูณ annualize เดียวกับที่เลือกไว้ด้านบน (รายไตรมาส/เต็มปี) ทุกจุด</p>
+        <p class="muted" style="margin:-6px 0 14px;font-size:12.5px">ใช้งวดที่บันทึกไว้ที่หน้า <a class="linkish" href="import.html">Import → งวดที่บันทึกไว้</a> เรียงเก่า→ใหม่ ต่อท้ายด้วยงวดปัจจุบัน — ROA/ROE/Asset Turnover ใช้ตัวคูณ annualize เดียวกับงวดที่เลือกไว้ด้านบน (Q1–Q4 / ทั้งปี) ทุกจุด</p>
         <div id="trendEmptySet" class="check no" style="display:none;margin-bottom:14px"><div class="ico">!</div><div><div class="t">มีงวดที่บันทึกไว้ไม่พอสำหรับดูแนวโน้ม</div><div class="d">ต้องมีอย่างน้อย 2 จุด (รวมงวดปัจจุบัน) — ไปบันทึกงวดเพิ่มที่หน้า <a class="linkish" href="import.html">Import</a></div></div></div>
         <div id="trendBodySet">
           <div class="chart-grid">
