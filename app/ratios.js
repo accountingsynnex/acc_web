@@ -249,6 +249,74 @@
     };
   }
 
+  /* ---- Imported history ------------------------------------------------
+     A board pack carries per-period totals, not a trial balance, so its
+     points can't go through FS.grouped(). They're reshaped here into the
+     same {bs, pl} pair buildBS/buildPL produce, and then run through the
+     very same computeTabMetrics as every other point — the file supplies
+     the inputs, this app still does the arithmetic.
+
+     Only the groups the ratio formulas actually read are filled in, which
+     is why HIST_UNSUPPORTED exists: a summary has no split of current
+     assets or liabilities, so the three liquidity ratios can't be derived
+     from it and are blanked rather than computed from a partial figure
+     that would look plausible and be wrong. */
+  const HIST_UNSUPPORTED = ['currentRatio', 'quickRatio', 'cashRatio', 'arVendorDays'];
+
+  function histBS(s, i) {
+    const sec = (name, groups) => ({ name, groups, total: groups.reduce((t, g) => t + g.value, 0) });
+    const netProfit = s.netIncome ? (s.netIncome[i] || 0) : 0;
+    return {
+      assets: [
+        sec('Current Assets', [
+          { group: 'Trade receivables', value: s.ar[i] },
+          { group: 'Inventories', value: s.inv[i] },
+        ]),
+        sec('Non-current Assets', []),
+      ],
+      liab: [sec('Current Liabilities', [{ group: 'Trade payable', value: s.ap[i] }]), sec('Non-current Liabilities', [])],
+      equity: [],
+      totalAssets: s.totalAssets ? (s.totalAssets[i] || 0) : 0,
+      totalLiab: s.totalLiab ? (s.totalLiab[i] || 0) : 0,
+      // buildBS reports equity BEFORE the period's profit and adds it back;
+      // the pack states closing equity, so take the profit back out to keep
+      // `totalEquity + netProfit` meaning the same thing everywhere.
+      totalEquity: (s.totalEquity ? (s.totalEquity[i] || 0) : 0) - netProfit,
+      netProfit,
+    };
+  }
+
+  function histPL(s, i) {
+    // Presentation signs, as buildPL leaves them: income positive, expense
+    // negative. The pack quotes cost of sales and finance cost as positives.
+    const revenue = s.revenue[i], cogs = -Math.abs(s.cogs[i]);
+    const grossProfit = revenue + cogs;
+    const netProfit = s.netIncome ? (s.netIncome[i] || 0) : 0;
+    const finance = s.financeCost ? -Math.abs(s.financeCost[i] || 0) : 0;
+    // Back out the two lines nobody states directly, so that operating
+    // margin lands on the pack's own operating income and net profit lands
+    // on its own net income instead of drifting from rounding.
+    const opIncome = s.opIncome && s.opIncome[i] != null ? s.opIncome[i] : grossProfit;
+    const opEx = opIncome - grossProfit;
+    const tax = netProfit - opIncome - finance;
+    return {
+      sections: [], revenue, cogs, grossProfit, opEx,
+      otherIE: 0, finance, share: 0, tax, netProfit,
+    };
+  }
+
+  function histPoints(series) {
+    return series.labels.map((label, i) => ({
+      label, months: series.months[i], bs: histBS(series, i), pl: histPL(series, i),
+    }));
+  }
+
+  const histMetrics = m => {
+    const out = Object.assign({}, m);
+    for (const k of HIST_UNSUPPORTED) out[k] = { value: null, formula: 'ต้องใช้งบทดลอง — ไฟล์ประวัติมีแต่ยอดรวม ไม่ได้แยกหมุนเวียน/ไม่หมุนเวียน' };
+    return out;
+  };
+
   // Quarterly trend charts (Chart.js, already vendored for Cost Center) —
   // one registry keyed by canvas id so re-render() destroys/recreates
   // instead of stacking new chart instances on the same canvas.
@@ -404,14 +472,19 @@
 
   function render() {
     const g = FS.grouped();
-    if (!g) {
-      $('banner').innerHTML = `<div class="check no" style="margin-bottom:14px"><div class="ico">!</div><div><div class="t">ยังไม่ได้นำเข้างบทดลอง</div><div class="d">ไปที่ <a class="linkish" href="import.html">Import TB</a> ก่อน</div></div></div>`;
+    // The cards need a trial balance; the trend charts don't, once a history
+    // has been imported. So an empty page is only empty when there is
+    // neither — otherwise the charts render and the cards say why they're
+    // blank.
+    const histLoaded = !!Store.fsHistory();
+    if (!g && !histLoaded) {
+      $('banner').innerHTML = `<div class="check no" style="margin-bottom:14px"><div class="ico">!</div><div><div class="t">ยังไม่ได้นำเข้างบทดลอง</div><div class="d">ไปที่ <a class="linkish" href="import.html">Import TB</a> ก่อน — หรือนำเข้าไฟล์ประวัติในหัวข้อ "แนวโน้มรายไตรมาส" เพื่อดูเฉพาะกราฟ</div></div></div>`;
       $('th').innerHTML = ''; $('tw').innerHTML = ''; $('set').innerHTML = '';
-      ['Th', 'Tw', 'Set'].forEach(suffix => { $(`trendEmpty${suffix}`).style.display = ''; $(`trendBody${suffix}`).style.display = 'none'; });
+      ['Th', 'Tw', 'Set'].forEach(suffix => { $(`trendEmpty${suffix}`).style.display = ''; $(`trendBody${suffix}`).style.display = ''; });
       destroyAllCharts();
       return;
     }
-    const bs = FS.buildBS(g), pl = FS.buildPL(g);
+    const bs = g ? FS.buildBS(g) : null, pl = g ? FS.buildPL(g) : null;
 
     // Opening balances (the imported file's own opening-balance column) —
     // used as the LIVE point's averaging partner for Taiwan/SET below.
@@ -426,9 +499,14 @@
     const annualizeFactor = 12 / periodMonths;
     const ytdNote = annualizeFactor > 1 ? ` × annualize ${annualizeFactor.toFixed(2)} (${periodMonths} เดือน→12)` : '';
 
-    renderTabCards('th', computeTabMetrics('th', bs, pl, null, { periodMonths, periodLabel }));
-    renderTabCards('tw', computeTabMetrics('tw', bs, pl, openingBS, { periodMonths, periodLabel, avgNote }));
-    renderTabCards('set', computeTabMetrics('set', bs, pl, openingBS, { annualizeFactor, ytdNote, avgNote, periodMonths, periodLabel }));
+    if (g) {
+      renderTabCards('th', computeTabMetrics('th', bs, pl, null, { periodMonths, periodLabel }));
+      renderTabCards('tw', computeTabMetrics('tw', bs, pl, openingBS, { periodMonths, periodLabel, avgNote }));
+      renderTabCards('set', computeTabMetrics('set', bs, pl, openingBS, { annualizeFactor, ytdNote, avgNote, periodMonths, periodLabel }));
+    } else {
+      const note = `<div class="inline-note">การ์ดอัตราส่วนงวดปัจจุบันต้องใช้งบทดลอง — <a class="linkish" href="import.html">นำเข้า TB</a> ก่อน ส่วนกราฟด้านล่างใช้ไฟล์ประวัติที่นำเข้าไว้แล้ว</div>`;
+      $('th').innerHTML = note; $('tw').innerHTML = note; $('set').innerHTML = note;
+    }
 
     // ---- Quarterly trend ("แนวโน้มรายไตรมาส") on all 3 tabs — recomputes
     // every ratio above once per period saved via Import's "งวดที่บันทึกไว้"
@@ -438,27 +516,38 @@
     // than the live cards' own opening-balance-column average above, which
     // is about one file, not a series; the first point has no predecessor
     // so falls back to its own ending balance.
-    const saved = Store.listPeriods().slice().sort((a, b) => a.key < b.key ? -1 : 1);
-    const trendList = [];
-    for (const p of saved) {
-      const prows = Store.periodCombinedRows(p.key);
-      const pg = prows && prows.length ? FS.grouped(prows) : null;
-      if (!pg) continue;
-      trendList.push({ label: p.label, bs: FS.buildBS(pg), pl: FS.buildPL(pg) });
+    // An imported history replaces the saved-period series outright: it
+    // covers far more periods, and each of its points carries its OWN month
+    // count (a quarter column is 3 months, a year column 12) instead of one
+    // count applied to the whole series.
+    const hist = Store.fsHistory();
+    const trendList = hist ? histPoints(hist.series) : [];
+    if (!hist) {
+      const saved = Store.listPeriods().slice().sort((a, b) => a.key < b.key ? -1 : 1);
+      for (const p of saved) {
+        const prows = Store.periodCombinedRows(p.key);
+        const pg = prows && prows.length ? FS.grouped(prows) : null;
+        if (!pg) continue;
+        trendList.push({ label: p.label, bs: FS.buildBS(pg), pl: FS.buildPL(pg) });
+      }
+      if (g) trendList.push({ label: 'ปัจจุบัน', bs, pl });
     }
-    trendList.push({ label: 'ปัจจุบัน', bs, pl });
     const trendLabels = trendList.map(p => p.label);
     const perPoint = trendList.map((pt, i) => {
       const prevBs = i > 0 ? trendList[i - 1].bs : null;
+      const months = pt.months || periodMonths;
+      const label = pt.months ? pt.label : periodLabel;
+      const factor = pt.months ? 12 / pt.months : annualizeFactor;
+      const wrap = hist ? histMetrics : (m => m);
       return {
-        th: computeTabMetrics('th', pt.bs, pt.pl, null, { periodMonths, periodLabel }),
-        tw: computeTabMetrics('tw', pt.bs, pt.pl, prevBs, { periodMonths, periodLabel }),
-        set: computeTabMetrics('set', pt.bs, pt.pl, prevBs, { annualizeFactor, periodMonths, periodLabel }),
+        th: wrap(computeTabMetrics('th', pt.bs, pt.pl, null, { periodMonths: months, periodLabel: label })),
+        tw: wrap(computeTabMetrics('tw', pt.bs, pt.pl, prevBs, { periodMonths: months, periodLabel: label })),
+        set: wrap(computeTabMetrics('set', pt.bs, pt.pl, prevBs, { annualizeFactor: factor, periodMonths: months, periodLabel: label })),
       };
     });
 
     function renderTrendTab(suffix, tabKey) {
-      const hasEnough = trendList.length >= 2;
+      const hasEnough = trendList.length >= 2;   // an imported history is already a series
       $(`trendEmpty${suffix}`).style.display = hasEnough ? 'none' : '';
       $(`trendBody${suffix}`).style.display = hasEnough ? '' : 'none';
       if (!hasEnough) {
@@ -477,11 +566,15 @@
       const bal = key => perPoint.map(m => (m[tabKey][key] || {}).base);
       const t = Store.cycleTargets();
       const sv = [cssVar('--sv1'), cssVar('--sv2'), cssVar('--sv3')];
-      const money = (id, title, key, target, hint) => drawCycleChart(`chart${id}${suffix}`, {
-        title, hint, labels: trendLabels, moneyBars: true, target,
-        bars: [{ label: title.replace(' Days', '') + ' (ล้านบาท)', data: bal(key), color: sv[0] }],
-        line: { label: title, data: days(key) },
-      });
+      const money = (id, title, key, target, hint) => {
+        const bars = bal(key);
+        const hasBars = bars.some(v => v != null && v !== 0);
+        drawCycleChart(`chart${id}${suffix}`, {
+          title, hint, labels: trendLabels, moneyBars: hasBars, target,
+          bars: hasBars ? [{ label: title.replace(' Days', '') + ' (ล้านบาท)', data: bars, color: sv[0] }] : [],
+          line: { label: title, data: days(key) },
+        });
+      };
       money('ArDays', 'AR Days', 'arDays', t.ar, 'ยิ่งน้อยยิ่งดี');
       money('InvDays', 'Inventory Days', 'invDays', t.inv, 'ยิ่งน้อยยิ่งดี');
       money('ApDays', 'AP Days', 'apDays', t.ap, 'ยิ่งมากยิ่งดี');
@@ -506,7 +599,7 @@
     renderTrendTab('Tw', 'tw');
     renderTrendTab('Set', 'set');
 
-    $('banner').innerHTML = `<div class="check ok" style="margin-bottom:14px"><div class="ico">✓</div><div><div class="t">คำนวณจากงบที่โรลอัปสด</div>
+    $('banner').innerHTML = !g ? '' : `<div class="check ok" style="margin-bottom:14px"><div class="ico">✓</div><div><div class="t">คำนวณจากงบที่โรลอัปสด</div>
       <div class="d">DSCR และ LT Debt/EBITDA ต้องใช้ตารางกระแสเงินสด/เงินกู้ — ดูหน้า <a class="linkish" href="cashflow.html">Cash Flow</a></div></div></div>`;
 
   }
@@ -533,6 +626,45 @@
       el.innerHTML = `เลือกงวดที่งบซึ่งนำเข้าครอบคลุม — งบทดลองสะสมกำไรขาดทุนตั้งแต่ต้นปีบัญชี <b>${esc(opt.label)}</b> จึงเท่ากับ <b>${opt.months} เดือน</b>${full} ใช้แปลงยอดคงเหลือเป็นจำนวนวันในวงจรเงินสด${extra} — ค่านี้ใช้ร่วมกันทั้ง 3 แท็บ`;
     });
   }
+
+  /* Import the history block out of a board-pack workbook. Only the inputs
+     are taken; the ratios stated beside them in the file are ignored, so
+     every figure on this page stays one this app computed. */
+  function renderHistRow() {
+    const h = Store.fsHistory();
+    document.querySelectorAll('[data-hist-note]').forEach(el => {
+      el.innerHTML = h
+        ? `ใช้ <b>${esc(h.series.labels.length)} งวด</b> จากชีต <b>${esc(h.sheet)}</b> ในไฟล์ <b>${esc(h.fileName)}</b>${h.series.dropped ? ` (ข้ามคอลัมน์ซ้ำ ${h.series.dropped})` : ''} — เว็บคำนวณอัตราส่วนเองจากยอดดิบในไฟล์ <button class="linkish" data-hist-clear>ล้าง</button>`
+        : 'ยังไม่ได้นำเข้า — กราฟใช้งวดที่บันทึกไว้ที่หน้า Import';
+    });
+    document.querySelectorAll('[data-hist-clear]').forEach(b => b.onclick = () => { Store.clearFsHistory(); renderHistRow(); render(); });
+  }
+  document.querySelectorAll('[data-hist-import]').forEach(b => b.onclick = () => $('histInput').click());
+  $('histInput').onchange = e => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    if (typeof XLSX === 'undefined') { alert('ตัวอ่าน Excel ยังไม่พร้อม'); return; }
+    const reader = new FileReader();
+    reader.onerror = () => alert('อ่านไฟล์ไม่ได้');
+    reader.onload = () => setTimeout(() => {
+      try {
+        const wb = XLSX.read(new Uint8Array(reader.result), {
+          type: 'array', sheetRows: 200, cellStyles: false, cellFormula: false, cellHTML: false, bookVBA: false,
+        });
+        const sheets = wb.SheetNames.map(n => ({
+          name: n,
+          matrix: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: null }),
+        }));
+        const best = FsHistory.parseFsWorkbook(sheets);
+        if (!best) throw new Error('ไม่พบตารางยอดย้อนหลังในไฟล์นี้ — ต้องมีชีตที่มีหัวคอลัมน์เป็นงวด (เช่น Q1-26, 2025) และแถวยอด Total revenues / Total COGS / AR / Inventory / AP');
+        Store.setFsHistory({ fileName: file.name, sheet: best.sheet, series: best.series, savedAt: new Date().toISOString() });
+        renderHistRow();
+        render();
+      } catch (err) { alert('นำเข้าประวัติไม่ได้: ' + err.message); }
+    }, 30);
+    reader.readAsArrayBuffer(file);
+  };
 
   /* Cash-cycle targets: one set shared by the three tabs, same as the period
      toggle, and persisted — a KRI is a standing company target, not something
@@ -566,5 +698,6 @@
   });
   renderPeriodSeg();
   renderKriRow();
+  renderHistRow();
   render();
 })();
