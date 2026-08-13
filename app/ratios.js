@@ -46,6 +46,20 @@
   let periodSel = 'q1';
   const periodOpt = () => PERIOD_OPTS.find(o => o.key === periodSel) || PERIOD_OPTS[0];
 
+  /* Which period the CARDS show. '' is the imported trial balance — the live
+     close. Anything else is an index into the imported history, so the cards
+     can be pointed at the same period the table and charts are showing.
+     Without this the two blocks read from different data with nothing on
+     screen to say so, which is exactly how they came to disagree. */
+  let cardSource = '';
+
+  /* How much of the trend to draw. A board pack carries decades; 36 points
+     on a half-width panel is a smear. And its columns mix quarters with full
+     years, which cannot share a trend line — a 12-month bar beside a 3-month
+     one reads as a spike that isn't there — so the default is quarters only,
+     most recent first. */
+  let trendType = 'q', trendShow = 12;
+
   // The single ordered ratio list shared by all 3 tabs — group label, a
   // stable key (used by computeTabMetrics, the trend table and the trend
   // charts), the display label and its unit. Adding/removing a ratio here
@@ -331,7 +345,9 @@
   const valueLabels = {
     id: 'cycleValueLabels',
     afterDatasetsDraw(chart, _a, opts) {
-      if (chart.data.labels.length > 10) return;
+      // Past this many columns even the short day labels collide; the
+      // per-mark width check below drops the longer money labels sooner.
+      if (chart.data.labels.length > 13) return;
       const { ctx } = chart;
       ctx.save();
       ctx.font = '600 10px ' + cssVar('--sans');
@@ -425,11 +441,13 @@
       options: {
         maintainAspectRatio: false,
         interaction: { mode: 'index', intersect: false },
-        layout: { padding: { top: 26 } },      // room for the labels above the line's top point
+        layout: { padding: { top: 34 } },      // room for the labels above the line's top point
         plugins: {
           cycleValueLabels: { ink, halo: cssVar('--chart-halo') },
           title: { display: true, text: cfg.title, color: ink, font: { size: 12.5, weight: '600' } },
-          subtitle: { display: !!cfg.hint, text: cfg.hint || '', color: faint, font: { size: 10 }, padding: { bottom: 4 } },
+          // Right-aligned: centred, it sits exactly where the line's peak
+          // label lands on a 12-column series.
+          subtitle: { display: !!cfg.hint, text: cfg.hint || '', color: faint, font: { size: 10 }, align: 'end', padding: { bottom: 2 } },
           legend: { display: true, position: 'bottom', labels: { color: muted, boxWidth: 11, boxHeight: 11, font: { size: 10.5 }, usePointStyle: false } },
           tooltip: {
             callbacks: {
@@ -463,10 +481,13 @@
   }
 
   function renderTrendTable(tblId, labels, rows) {
-    $(tblId).innerHTML = `<thead><tr><th>อัตราส่วน</th>${labels.map(l => `<th class="r">${esc(l)}</th>`).join('')}</tr></thead>
+    // The ratio name column is pinned: with a dozen period columns the table
+    // scrolls sideways, and a row of numbers with its label off-screen is
+    // unreadable. Latest period first so the eye starts where it matters.
+    $(tblId).innerHTML = `<thead><tr><th class="pin">อัตราส่วน</th>${labels.map(l => `<th class="r nw">${esc(l)}</th>`).join('')}</tr></thead>
       <tbody>${rows.map(r => r.header
-        ? `<tr><td colspan="${labels.length + 1}" style="padding-top:12px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);font-weight:700">${esc(r.header)}</td></tr>`
-        : `<tr><td>${esc(r.label)}</td>${r.values.map(v => `<td class="r">${fmt(v, r.unit)}</td>`).join('')}</tr>`
+        ? `<tr><td class="pin" colspan="${labels.length + 1}" style="padding-top:12px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);font-weight:700">${esc(r.header)}</td></tr>`
+        : `<tr><td class="pin nw">${esc(r.label)}</td>${r.values.map(v => `<td class="r nw">${fmt(v, r.unit)}</td>`).join('')}</tr>`
       ).join('')}</tbody>`;
   }
 
@@ -477,6 +498,7 @@
     // neither — otherwise the charts render and the cards say why they're
     // blank.
     const histLoaded = !!Store.fsHistory();
+    renderSrcBar();
     if (!g && !histLoaded) {
       $('banner').innerHTML = `<div class="check no" style="margin-bottom:14px"><div class="ico">!</div><div><div class="t">ยังไม่ได้นำเข้างบทดลอง</div><div class="d">ไปที่ <a class="linkish" href="import.html">Import TB</a> ก่อน — หรือนำเข้าไฟล์ประวัติในหัวข้อ "แนวโน้มรายไตรมาส" เพื่อดูเฉพาะกราฟ</div></div></div>`;
       $('th').innerHTML = ''; $('tw').innerHTML = ''; $('set').innerHTML = '';
@@ -499,12 +521,27 @@
     const annualizeFactor = 12 / periodMonths;
     const ytdNote = annualizeFactor > 1 ? ` × annualize ${annualizeFactor.toFixed(2)} (${periodMonths} เดือน→12)` : '';
 
-    if (g) {
+    // Cards: the live trial balance, or a period out of the imported history
+    // when one is picked. Same formulas either way — only the inputs change.
+    const histAll = Store.fsHistory();
+    const ci = histAll ? Math.min(Math.max(parseInt(cardSource, 10) || 0, 0), histAll.series.labels.length - 1) : -1;
+    const useHist = !!histAll;
+    if (useHist) {
+      const s0 = histAll.series;
+      const cbs = histBS(s0, ci), cpl = histPL(s0, ci);
+      const cprev = ci > 0 ? histBS(s0, ci - 1) : null;
+      const cm = s0.months[ci], cl = s0.labels[ci], cf = 12 / cm;
+      const cavg = cprev ? `ยอดเฉลี่ยกับงวดก่อนหน้าในไฟล์ประวัติ (${esc(s0.labels[ci - 1])})` : 'งวดแรกของไฟล์ประวัติ — ไม่มีงวดก่อนหน้าให้เฉลี่ย ใช้ยอดปลายงวด';
+      const cyn = cf > 1 ? ` × annualize ${cf.toFixed(2)} (${cm} เดือน→12)` : '';
+      renderTabCards('th', histMetrics(computeTabMetrics('th', cbs, cpl, null, { periodMonths: cm, periodLabel: cl })));
+      renderTabCards('tw', histMetrics(computeTabMetrics('tw', cbs, cpl, cprev, { periodMonths: cm, periodLabel: cl, avgNote: cavg })));
+      renderTabCards('set', histMetrics(computeTabMetrics('set', cbs, cpl, cprev, { annualizeFactor: cf, ytdNote: cyn, avgNote: cavg, periodMonths: cm, periodLabel: cl })));
+    } else if (g) {
       renderTabCards('th', computeTabMetrics('th', bs, pl, null, { periodMonths, periodLabel }));
       renderTabCards('tw', computeTabMetrics('tw', bs, pl, openingBS, { periodMonths, periodLabel, avgNote }));
       renderTabCards('set', computeTabMetrics('set', bs, pl, openingBS, { annualizeFactor, ytdNote, avgNote, periodMonths, periodLabel }));
     } else {
-      const note = `<div class="inline-note">การ์ดอัตราส่วนงวดปัจจุบันต้องใช้งบทดลอง — <a class="linkish" href="import.html">นำเข้า TB</a> ก่อน ส่วนกราฟด้านล่างใช้ไฟล์ประวัติที่นำเข้าไว้แล้ว</div>`;
+      const note = `<div class="inline-note">การ์ดอัตราส่วนงวดปัจจุบันต้องใช้งบทดลอง — <a class="linkish" href="import.html">นำเข้า TB</a> ก่อน หรือเลือกงวดจากไฟล์ประวัติในช่อง "งวดที่แสดงบนการ์ด" ด้านบน</div>`;
       $('th').innerHTML = note; $('tw').innerHTML = note; $('set').innerHTML = note;
     }
 
@@ -521,7 +558,15 @@
     // count (a quarter column is 3 months, a year column 12) instead of one
     // count applied to the whole series.
     const hist = Store.fsHistory();
-    const trendList = hist ? histPoints(hist.series) : [];
+    let trendList = hist ? histPoints(hist.series) : [];
+    if (hist) {
+      // Quarters and full years can't share one trend line; then keep only
+      // the most recent N so the panel stays legible.
+      const isQ = l => /q\s*[1-4]|ไตรมาส/i.test(String(l));
+      if (trendType === 'q') trendList = trendList.filter(p => isQ(p.label));
+      else if (trendType === 'y') trendList = trendList.filter(p => !isQ(p.label));
+      if (trendShow) trendList = trendList.slice(-trendShow);
+    }
     if (!hist) {
       const saved = Store.listPeriods().slice().sort((a, b) => a.key < b.key ? -1 : 1);
       for (const p of saved) {
@@ -552,6 +597,7 @@
       $(`trendBody${suffix}`).style.display = hasEnough ? '' : 'none';
       if (!hasEnough) {
         ['ArDays', 'InvDays', 'ApDays', 'Ccc'].forEach(c => { const id = `chart${c}${suffix}`; if (charts[id]) { charts[id].destroy(); delete charts[id]; } });
+        $(`trendTbl${suffix}`).innerHTML = '';
         return;
       }
       const table = buildTrendTable(perPoint, tabKey);
@@ -627,19 +673,53 @@
     });
   }
 
+  /* One source for the whole page. A trial balance is the base; importing a
+     history file switches everything — cards, charts and table — over to it,
+     because two blocks reading different data with nothing on screen to say
+     so is how the numbers came to disagree in the first place. Clearing the
+     file switches everything back.
+
+     Which column of the file the cards show is still a choice (the charts
+     show the whole series), so that one picker stays, defaulting to the most
+     recent period. */
+  function renderSrcBar() {
+    const h = Store.fsHistory(), hasTB = Store.hasData();
+    if (h && cardSource === '') cardSource = String(h.series.labels.length - 1);
+    if (!h) cardSource = '';
+    $('srcVal').innerHTML = h
+      ? `<b>ไฟล์ประวัติ</b> · ${h.series.labels.length} งวด จากชีต <b>${esc(h.sheet)}</b>${h.series.dropped ? ` (ข้ามคอลัมน์ซ้ำ ${h.series.dropped})` : ''} — <span class="muted">${esc(h.fileName)}</span>`
+      : hasTB
+        ? '<b>งบทดลองที่นำเข้า</b> — ทั้งหน้าคำนวณจาก TB งวดปัจจุบัน'
+        : '<b>ยังไม่มีข้อมูล</b> — นำเข้า TB ที่หน้า Import หรือนำเข้าไฟล์ประวัติที่นี่';
+    $('histImport').textContent = h ? 'เปลี่ยนไฟล์' : 'นำเข้าไฟล์ประวัติ (.xlsx)';
+    $('histClear').hidden = !h;
+    $('cardSrcWrap').hidden = !h;
+    if (h) {
+      $('cardSrc').innerHTML = h.series.labels.map((l, i) => `<option value="${i}">${esc(l)}</option>`).join('');
+      $('cardSrc').value = cardSource;
+    }
+  }
+  $('cardSrc').onchange = () => { cardSource = $('cardSrc').value; render(); };
+  $('histClear').onclick = () => { Store.clearFsHistory(); cardSource = ''; renderSrcBar(); renderTrendCtl(); render(); };
+
+  /* Trend range + granularity, shared across the tabs like every other
+     control here. Only meaningful for an imported history, so hidden
+     otherwise: a saved-period series is short and the user named it. */
+  function renderTrendCtl() {
+    const h = Store.fsHistory();
+    document.querySelectorAll('[data-trend-ctl]').forEach(row => {
+      row.style.display = h ? '' : 'none';
+      row.querySelectorAll('[data-ttype]').forEach(b2 => b2.classList.toggle('on', b2.dataset.ttype === trendType));
+      row.querySelectorAll('[data-tshow]').forEach(b2 => b2.classList.toggle('on', +b2.dataset.tshow === trendShow));
+    });
+  }
+  document.querySelectorAll('[data-ttype]').forEach(b2 => b2.onclick = () => { trendType = b2.dataset.ttype; renderTrendCtl(); render(); });
+  document.querySelectorAll('[data-tshow]').forEach(b2 => b2.onclick = () => { trendShow = +b2.dataset.tshow; renderTrendCtl(); render(); });
+
   /* Import the history block out of a board-pack workbook. Only the inputs
      are taken; the ratios stated beside them in the file are ignored, so
      every figure on this page stays one this app computed. */
-  function renderHistRow() {
-    const h = Store.fsHistory();
-    document.querySelectorAll('[data-hist-note]').forEach(el => {
-      el.innerHTML = h
-        ? `ใช้ <b>${esc(h.series.labels.length)} งวด</b> จากชีต <b>${esc(h.sheet)}</b> ในไฟล์ <b>${esc(h.fileName)}</b>${h.series.dropped ? ` (ข้ามคอลัมน์ซ้ำ ${h.series.dropped})` : ''} — เว็บคำนวณอัตราส่วนเองจากยอดดิบในไฟล์ <button class="linkish" data-hist-clear>ล้าง</button>`
-        : 'ยังไม่ได้นำเข้า — กราฟใช้งวดที่บันทึกไว้ที่หน้า Import';
-    });
-    document.querySelectorAll('[data-hist-clear]').forEach(b => b.onclick = () => { Store.clearFsHistory(); renderHistRow(); render(); });
-  }
-  document.querySelectorAll('[data-hist-import]').forEach(b => b.onclick = () => $('histInput').click());
+  $('histImport').onclick = () => $('histInput').click();
   $('histInput').onchange = e => {
     const file = e.target.files && e.target.files[0];
     e.target.value = '';
@@ -659,7 +739,9 @@
         const best = FsHistory.parseFsWorkbook(sheets);
         if (!best) throw new Error('ไม่พบตารางยอดย้อนหลังในไฟล์นี้ — ต้องมีชีตที่มีหัวคอลัมน์เป็นงวด (เช่น Q1-26, 2025) และแถวยอด Total revenues / Total COGS / AR / Inventory / AP');
         Store.setFsHistory({ fileName: file.name, sheet: best.sheet, series: best.series, savedAt: new Date().toISOString() });
-        renderHistRow();
+        cardSource = '';
+        renderSrcBar();
+        renderTrendCtl();
         render();
       } catch (err) { alert('นำเข้าประวัติไม่ได้: ' + err.message); }
     }, 30);
@@ -698,6 +780,7 @@
   });
   renderPeriodSeg();
   renderKriRow();
-  renderHistRow();
+  renderSrcBar();
+  renderTrendCtl();
   render();
 })();
