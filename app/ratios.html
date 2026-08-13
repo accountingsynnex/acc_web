@@ -40,13 +40,13 @@
         <div class="ratio-grid" id="th"></div>
         <h2 class="sec" style="margin-top:26px">แนวโน้มรายไตรมาส</h2>
         <p class="muted" style="margin:-6px 0 14px;font-size:12.5px">ใช้งวดที่บันทึกไว้ที่หน้า <a class="linkish" href="import.html">Import → งวดที่บันทึกไว้</a> เรียงเก่า→ใหม่ ต่อท้ายด้วยงวดปัจจุบัน — สูตรเดียวกับการ์ดด้านบนทุกตัว (วงจรเงินสดยังเป็นยอดปลายงวดล้วน ไม่เฉลี่ย)</p>
-        <div id="trendEmptyTh" class="check no" style="display:none;margin-bottom:14px"><div class="ico">!</div><div><div class="t">มีงวดที่บันทึกไว้ไม่พอสำหรับดูแนวโน้ม</div><div class="d">ต้องมีอย่างน้อย 2 จุด (รวมงวดปัจจุบัน) — ไปบันทึกงวดเพิ่มที่หน้า <a class="linkish" href="import.html">Import</a></div></div></div>
+        <div class="kri-row" data-hist-row>
+          <span class="lbl">ประวัติย้อนหลัง:</span>
+          <button class="linkish" data-hist-import style="text-decoration:none">นำเข้าจากไฟล์ Excel</button>
+          <span data-hist-note></span>
+        </div>
+        <div id="trendEmptyTh" class="check no" style="display:none;margin-bottom:14px"><div class="ico">!</div><div><div class="t">ยังไม่มีข้อมูลพอสำหรับดูแนวโน้ม</div><div class="d">เลือกทางใดทางหนึ่ง — <b>นำเข้าจากไฟล์ Excel</b> ด้านบน (ได้ประวัติย้อนหลังหลายปีในครั้งเดียว) หรือบันทึกงวดเพิ่มที่หน้า <a class="linkish" href="import.html">Import</a> ให้ครบอย่างน้อย 2 งวด</div></div></div>
         <div id="trendBodyTh">
-          <div class="kri-row" data-hist-row>
-            <span class="lbl">ประวัติย้อนหลัง:</span>
-            <button class="linkish" data-hist-import style="text-decoration:none">นำเข้าจากไฟล์ Excel</button>
-            <span data-hist-note></span>
-          </div>
           <div class="kri-row" data-kri-row>
             <span class="lbl">เป้าหมาย (KRI) — เส้นประในกราฟ:</span>
             <label>AR <input type="number" data-kri="ar" min="0" step="1" placeholder="—" /></label>
@@ -78,13 +78,13 @@
         <div class="ratio-grid" id="tw"></div>
         <h2 class="sec" style="margin-top:26px">แนวโน้มรายไตรมาส</h2>
         <p class="muted" style="margin:-6px 0 14px;font-size:12.5px">ใช้งวดที่บันทึกไว้ที่หน้า <a class="linkish" href="import.html">Import → งวดที่บันทึกไว้</a> เรียงเก่า→ใหม่ ต่อท้ายด้วยงวดปัจจุบัน — วงจรเงินสดที่นี่เฉลี่ยกับ<b>งวดก่อนหน้าในตารางนี้ (เทียบกันแบบ chain)</b> ไม่ใช่คอลัมน์ยอดยกมาในไฟล์ที่นำเข้าแบบการ์ดด้านบน จุดแรกสุดจึงไม่มีค่าเฉลี่ยให้ใช้ (ใช้ยอดปลายงวดแทน)</p>
-        <div id="trendEmptyTw" class="check no" style="display:none;margin-bottom:14px"><div class="ico">!</div><div><div class="t">มีงวดที่บันทึกไว้ไม่พอสำหรับดูแนวโน้ม</div><div class="d">ต้องมีอย่างน้อย 2 จุด (รวมงวดปัจจุบัน) — ไปบันทึกงวดเพิ่มที่หน้า <a class="linkish" href="import.html">Import</a></div></div></div>
+        <div class="kri-row" data-hist-row>
+          <span class="lbl">ประวัติย้อนหลัง:</span>
+          <button class="linkish" data-hist-import style="text-decoration:none">นำเข้าจากไฟล์ Excel</button>
+          <span data-hist-note></span>
+        </div>
+        <div id="trendEmptyTw" class="check no" style="display:none;margin-bottom:14px"><div class="ico">!</div><div><div class="t">ยังไม่มีข้อมูลพอสำหรับดูแนวโน้ม</div><div class="d">เลือกทางใดทางหนึ่ง — <b>นำเข้าจากไฟล์ Excel</b> ด้านบน (ได้ประวัติย้อนหลังหลายปีในครั้งเดียว) หรือบันทึกงวดเพิ่มที่หน้า <a class="linkish" href="import.html">Import</a> ให้ครบอย่างน้อย 2 งวด</div></div></div>
         <div id="trendBodyTw">
-          <div class="kri-row" data-hist-row>
-            <span class="lbl">ประวัติย้อนหลัง:</span>
-            <button class="linkish" data-hist-import style="text-decoration:none">นำเข้าจากไฟล์ Excel</button>
-            <span data-hist-note></span>
-          </div>
           <div class="kri-row" data-kri-row>
             <span class="lbl">เป้าหมาย (KRI) — เส้นประในกราฟ:</span>
             <label>AR <input type="number" data-kri="ar" min="0" step="1" placeholder="—" /></label>
@@ -116,13 +116,13 @@
         <div class="ratio-grid" id="set"></div>
         <h2 class="sec" style="margin-top:26px">แนวโน้มรายไตรมาส</h2>
         <p class="muted" style="margin:-6px 0 14px;font-size:12.5px">ใช้งวดที่บันทึกไว้ที่หน้า <a class="linkish" href="import.html">Import → งวดที่บันทึกไว้</a> เรียงเก่า→ใหม่ ต่อท้ายด้วยงวดปัจจุบัน — ROA/ROE/Asset Turnover ใช้ตัวคูณ annualize เดียวกับงวดที่เลือกไว้ด้านบน (Q1–Q4) ทุกจุด</p>
-        <div id="trendEmptySet" class="check no" style="display:none;margin-bottom:14px"><div class="ico">!</div><div><div class="t">มีงวดที่บันทึกไว้ไม่พอสำหรับดูแนวโน้ม</div><div class="d">ต้องมีอย่างน้อย 2 จุด (รวมงวดปัจจุบัน) — ไปบันทึกงวดเพิ่มที่หน้า <a class="linkish" href="import.html">Import</a></div></div></div>
+        <div class="kri-row" data-hist-row>
+          <span class="lbl">ประวัติย้อนหลัง:</span>
+          <button class="linkish" data-hist-import style="text-decoration:none">นำเข้าจากไฟล์ Excel</button>
+          <span data-hist-note></span>
+        </div>
+        <div id="trendEmptySet" class="check no" style="display:none;margin-bottom:14px"><div class="ico">!</div><div><div class="t">ยังไม่มีข้อมูลพอสำหรับดูแนวโน้ม</div><div class="d">เลือกทางใดทางหนึ่ง — <b>นำเข้าจากไฟล์ Excel</b> ด้านบน (ได้ประวัติย้อนหลังหลายปีในครั้งเดียว) หรือบันทึกงวดเพิ่มที่หน้า <a class="linkish" href="import.html">Import</a> ให้ครบอย่างน้อย 2 งวด</div></div></div>
         <div id="trendBodySet">
-          <div class="kri-row" data-hist-row>
-            <span class="lbl">ประวัติย้อนหลัง:</span>
-            <button class="linkish" data-hist-import style="text-decoration:none">นำเข้าจากไฟล์ Excel</button>
-            <span data-hist-note></span>
-          </div>
           <div class="kri-row" data-kri-row>
             <span class="lbl">เป้าหมาย (KRI) — เส้นประในกราฟ:</span>
             <label>AR <input type="number" data-kri="ar" min="0" step="1" placeholder="—" /></label>
