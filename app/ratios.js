@@ -499,6 +499,7 @@
     // blank.
     const histLoaded = !!Store.fsHistory();
     renderSrcBar();
+    renderPeriodSeg();
     if (!g && !histLoaded) {
       $('banner').innerHTML = `<div class="check no" style="margin-bottom:14px"><div class="ico">!</div><div><div class="t">ยังไม่ได้นำเข้างบทดลอง</div><div class="d">ไปที่ <a class="linkish" href="import.html">Import TB</a> ก่อน — หรือนำเข้าไฟล์ประวัติในหัวข้อ "แนวโน้มรายไตรมาส" เพื่อดูเฉพาะกราฟ</div></div></div>`;
       $('th').innerHTML = ''; $('tw').innerHTML = ''; $('set').innerHTML = '';
@@ -658,9 +659,30 @@
      averaged balance without scaling it up). */
   function renderPeriodSeg() {
     const opt = periodOpt(), factor = 12 / opt.months;
+    /* The toggle only exists to say how much of the year a TRIAL BALANCE
+       covers, because a trial balance can't say so itself. An imported
+       history names the period in its own column header and carries the
+       month count with it, so the toggle has nothing left to decide — and
+       leaving it on screen invited exactly the reasonable question of why
+       clicking it changed nothing. Hidden, with the note saying where the
+       period length is coming from instead. */
+    const h = Store.fsHistory();
+    const hi = h ? Math.min(Math.max(parseInt(cardSource, 10) || 0, 0), h.series.labels.length - 1) : -1;
     document.querySelectorAll('[data-period-seg]').forEach(seg => {
+      seg.style.display = h ? 'none' : '';
       seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.q === periodSel));
     });
+    if (h) {
+      const months = h.series.months[hi], label = h.series.labels[hi], f = 12 / months;
+      document.querySelectorAll('[data-period-note]').forEach(el => {
+        const tab = el.closest('.tab-panel').dataset.panel;
+        const extra = tab === 'set'
+          ? (f > 1 ? ` และปรับ ROA/ROE/Total Asset Turnover เป็นรายปี <b>×${f.toFixed(2)}</b>` : ' และไม่ต้องปรับ ROA/ROE/Total Asset Turnover เป็นรายปี (เต็มปีแล้ว)')
+          : '';
+        el.innerHTML = `กำลังใช้ <b>ไฟล์ประวัติ</b> — ความยาวงวดมาจากคอลัมน์ในไฟล์เอง ไม่ต้องเลือก Q1–Q4 อีก: งวด <b>${esc(label)}</b> = <b>${months} เดือน</b>${extra} · เปลี่ยนงวดของการ์ดได้ที่ช่อง "การ์ดแสดงงวด" ด้านบนสุด`;
+      });
+      return;
+    }
     document.querySelectorAll('[data-period-note]').forEach(el => {
       const tab = el.closest('.tab-panel').dataset.panel;
       const extra = tab === 'set'
