@@ -159,9 +159,9 @@
       const invF = `สินค้าคงเหลือ ${M(inventory)} ÷ ต้นทุนขาย × ${days.toFixed(2)} วัน ${note}`;
       const apF = `เจ้าหนี้การค้า ${M(tradeAP)} ÷ ต้นทุนขาย × ${days.toFixed(2)} วัน ${note}`;
       return {
-        arDays: { value: arDays, formula: arF },
-        invDays: { value: invDays, formula: invF },
-        apDays: { value: apDays, formula: apF },
+        arDays: { value: arDays, formula: arF, base: grossAR },
+        invDays: { value: invDays, formula: invF, base: inventory },
+        apDays: { value: apDays, formula: apF, base: tradeAP },
         ccc: { value: (arDays != null && invDays != null && apDays != null) ? arDays + invDays - apDays : null, formula: 'AR Days + Inventory Days − AP Days' },
         currentRatio: { value: currentRatio, formula: 'สินทรัพย์หมุนเวียน ÷ หนี้สินหมุนเวียน ✓ ตรงกับสูตร Conso จริง' },
         quickRatio: { value: CL ? (CA - inventory) / CL : null, formula: '(สินทรัพย์หมุนเวียน − สินค้าคงเหลือ) ÷ หนี้สินหมุนเวียน ✓ ตรงกับสูตร Conso จริง' },
@@ -195,10 +195,10 @@
       const avgNote = ctx.avgNote || '';
       const pNote = `(งบ ${ctx.periodLabel || ''} = ${months} เดือนสะสม)`;
       return {
-        arDays: { value: arDays, formula: `ลูกหนี้การค้าเฉลี่ย ${M(avgAR)} ÷ รายได้ × ${dayMultiplier.toFixed(2)} วัน ✓ สูตรจริงจาก PAR/NROIC ${pNote}` },
-        arVendorDays: { value: arVendorDays, formula: `ลูกหนี้เคลม vendor เฉลี่ย ${M(avgVAR)} ÷ รายได้ × ${dayMultiplier.toFixed(2)} วัน ✓ สูตรจริงจาก PAR/NROIC ${pNote}` },
-        invDays: { value: invDays, formula: `สินค้าคงเหลือเฉลี่ย ${M(avgInv)} ÷ ต้นทุนขาย × ${dayMultiplier.toFixed(2)} วัน ✓ สูตรจริงจาก PAR/NROIC ${pNote}` },
-        apDays: { value: apDays, formula: `เจ้าหนี้การค้าเฉลี่ย ${M(avgAP)} ÷ ต้นทุนขาย × ${dayMultiplier.toFixed(2)} วัน ✓ สูตรจริงจาก PAR/NROIC ${pNote}` },
+        arDays: { base: avgAR, value: arDays, formula: `ลูกหนี้การค้าเฉลี่ย ${M(avgAR)} ÷ รายได้ × ${dayMultiplier.toFixed(2)} วัน ✓ สูตรจริงจาก PAR/NROIC ${pNote}` },
+        arVendorDays: { base: avgVAR, value: arVendorDays, formula: `ลูกหนี้เคลม vendor เฉลี่ย ${M(avgVAR)} ÷ รายได้ × ${dayMultiplier.toFixed(2)} วัน ✓ สูตรจริงจาก PAR/NROIC ${pNote}` },
+        invDays: { base: avgInv, value: invDays, formula: `สินค้าคงเหลือเฉลี่ย ${M(avgInv)} ÷ ต้นทุนขาย × ${dayMultiplier.toFixed(2)} วัน ✓ สูตรจริงจาก PAR/NROIC ${pNote}` },
+        apDays: { base: avgAP, value: apDays, formula: `เจ้าหนี้การค้าเฉลี่ย ${M(avgAP)} ÷ ต้นทุนขาย × ${dayMultiplier.toFixed(2)} วัน ✓ สูตรจริงจาก PAR/NROIC ${pNote}` },
         ccc: { value: ccc, formula: 'AR Days + AR Vendor Days + Inventory Days − AP Days (ค่าเฉลี่ยต้นงวด+ปลายงวด แทนยอดปลายงวดล้วน)' },
         currentRatio: { value: currentRatio, formula: 'สินทรัพย์หมุนเวียน ÷ หนี้สินหมุนเวียน (เหมือนวิธีบริษัท — ชีท KPI ใช้สูตรเดียวกัน)' },
         quickRatio: { value: CL ? (CA - inventory - prepayment) / CL : null, formula: `(สินทรัพย์หมุนเวียน − สินค้าคงเหลือ − เงินจ่ายล่วงหน้า ${M(prepayment)}) ÷ หนี้สินหมุนเวียน ✓ สูตรจริงจากชีท KPI` },
@@ -231,9 +231,9 @@
     const invF = `สินค้าคงเหลือ ${M(inventory)} ÷ ต้นทุนขาย × ${daysSet.toFixed(2)} วัน ${noteSet}`;
     const apF = `เจ้าหนี้การค้า ${M(tradeAP)} ÷ ต้นทุนขาย × ${daysSet.toFixed(2)} วัน ${noteSet}`;
     return {
-      arDays: { value: arDays, formula: arF },
-      invDays: { value: invDays, formula: invF },
-      apDays: { value: apDays, formula: apF },
+      arDays: { value: arDays, formula: arF, base: grossAR + otherReceivable },
+      invDays: { value: invDays, formula: invF, base: inventory },
+      apDays: { value: apDays, formula: apF, base: tradeAP },
       ccc: { value: (arDays != null && invDays != null && apDays != null) ? arDays + invDays - apDays : null, formula: 'AR Days + Inventory Days − AP Days' },
       currentRatio: { value: currentRatio, formula: 'สินทรัพย์หมุนเวียน ÷ หนี้สินหมุนเวียน (เหมือนวิธีบริษัท)' },
       quickRatio: { value: CL ? (CA - inventory) / CL : null, formula: '(สินทรัพย์หมุนเวียน − สินค้าคงเหลือ) ÷ หนี้สินหมุนเวียน (เหมือนวิธีบริษัท)' },
@@ -254,27 +254,127 @@
   // instead of stacking new chart instances on the same canvas.
   const charts = {};
   function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
-  function drawTrendChart(canvasId, title, labels, data) {
+
+  /* Print each value on its own mark, the way the company's own cash-cycle
+     sheet does — these panels double as the table, so a reader shouldn't have
+     to hover to read a number. Skipped once the series is long enough that
+     the labels would collide. Chart.js ships no datalabels plugin, so this is
+     an inline one; text stays in ink tokens, never the series colour. */
+  const valueLabels = {
+    id: 'cycleValueLabels',
+    afterDatasetsDraw(chart, _a, opts) {
+      if (chart.data.labels.length > 10) return;
+      const { ctx } = chart;
+      ctx.save();
+      ctx.font = '600 10px ' + cssVar('--sans');
+      ctx.textAlign = 'center';
+      chart.data.datasets.forEach((ds, di) => {
+        if (ds.noLabels) return;
+        const meta = chart.getDatasetMeta(di);
+        if (meta.hidden) return;
+        meta.data.forEach((el, i) => {
+          const v = ds.data[i];
+          if (v == null) return;
+          const txt = ds.fmt ? ds.fmt(v) : Math.round(v).toLocaleString('en-US');
+          if (ds.type === 'line') {
+            // Haloed, because the line crosses the bars it is plotted over
+            // and its label would otherwise land on top of a bar's own.
+            ctx.textBaseline = 'bottom';
+            ctx.lineWidth = 3.5;
+            ctx.lineJoin = 'round';
+            ctx.strokeStyle = opts.halo;
+            ctx.strokeText(txt, el.x, el.y - 7);
+            ctx.fillStyle = opts.ink;
+            ctx.fillText(txt, el.x, el.y - 7);
+          } else {
+            // Near the base, inside the bar. The line tracks the top of the
+            // plot, so anchoring bar labels low keeps the two sets apart —
+            // and it is where the company's own sheet puts them. Skipped
+            // when the bar is too small to hold the text either way; the
+            // value is still in the tooltip and the table under the charts.
+            if (Math.abs(el.base - el.y) < 26) return;
+            if (ctx.measureText(txt).width > el.width - 3) return;
+            ctx.fillStyle = '#fff';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(txt, el.x, el.base - 6);
+          }
+        });
+      });
+      ctx.restore();
+    },
+  };
+
+  /* One combo panel: bars for the amount, a line for the ratio it produces,
+     and an optional dashed target. `moneyBars` puts the bars on their own
+     millions axis opposite the days axis — the layout the company reads every
+     month. Two scales invite a false "the lines crossed" reading, so the two
+     axes are titled with their unit and tinted to match the marks they carry.
+     The cash-cycle panel passes moneyBars:false and everything shares one
+     days axis, which needs no such care. */
+  function drawCycleChart(canvasId, cfg) {
     const el = $(canvasId);
     if (!el) return;
     if (charts[canvasId]) { charts[canvasId].destroy(); delete charts[canvasId]; }
-    if (!labels.length) return;
-    const ink = cssVar('--ink'), muted = cssVar('--muted'), line = cssVar('--line'), accent = cssVar('--accent');
-    const datasets = [{ label: title, data, borderColor: accent, backgroundColor: accent, tension: .25, pointRadius: 4, pointHoverRadius: 6 }];
+    if (!cfg.labels.length) return;
+    const ink = cssVar('--ink'), muted = cssVar('--muted'), line = cssVar('--line'), faint = cssVar('--faint');
+    const daysAxis = cfg.moneyBars ? 'y1' : 'y';
+    const datasets = cfg.bars.map(b => ({
+      type: 'bar', label: b.label, data: b.data, backgroundColor: b.color,
+      yAxisID: cfg.moneyBars ? 'y' : 'y', borderRadius: 4, borderSkipped: 'bottom',
+      // A lone bar is wide enough to carry its own value label; grouped bars
+      // are not, and the label plugin drops theirs rather than overflow.
+      categoryPercentage: .74, barPercentage: cfg.bars.length > 1 ? .92 : .8,
+      fmt: cfg.moneyBars ? (v => Math.round(v / 1e6).toLocaleString('en-US')) : (v => v.toFixed(0)),
+    }));
+    datasets.push({
+      type: 'line', label: cfg.line.label, data: cfg.line.data, yAxisID: daysAxis,
+      borderColor: muted, backgroundColor: muted, borderWidth: 2,
+      pointRadius: 4, pointHoverRadius: 7, tension: .25,
+      fmt: v => v.toFixed(0),
+    });
+    if (cfg.target != null && isFinite(cfg.target)) {
+      datasets.push({
+        type: 'line', label: `เป้าหมาย ${cfg.target}`, data: cfg.labels.map(() => cfg.target),
+        yAxisID: daysAxis, borderColor: cssVar('--warn'), borderWidth: 1.5, borderDash: [5, 4],
+        pointRadius: 0, pointHoverRadius: 0, noLabels: true,
+      });
+    }
+    const moneyScale = {
+      type: 'linear', position: 'left', beginAtZero: true,
+      title: { display: true, text: 'ล้านบาท', color: muted, font: { size: 10 } },
+      ticks: { color: muted, font: { size: 10 }, callback: v => (v / 1e6).toLocaleString('en-US') },
+      grid: { color: line },
+    };
+    const daysScale = {
+      type: 'linear', position: cfg.moneyBars ? 'right' : 'left', beginAtZero: true,
+      title: { display: true, text: 'วัน', color: muted, font: { size: 10 } },
+      ticks: { color: muted, font: { size: 10 } },
+      grid: cfg.moneyBars ? { drawOnChartArea: false } : { color: line },
+    };
     charts[canvasId] = new Chart(el.getContext('2d'), {
-      type: 'line',
-      data: { labels, datasets },
+      data: { labels: cfg.labels, datasets },
+      plugins: [valueLabels],
       options: {
         maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        layout: { padding: { top: 26 } },      // room for the labels above the line's top point
         plugins: {
-          title: { display: true, text: title, color: ink, font: { size: 12.5, weight: '600' } },
-          legend: { display: false },
-          tooltip: { callbacks: { label: c => c.raw == null ? '—' : c.raw.toFixed(1) + ' วัน' } },
+          cycleValueLabels: { ink, halo: cssVar('--chart-halo') },
+          title: { display: true, text: cfg.title, color: ink, font: { size: 12.5, weight: '600' } },
+          subtitle: { display: !!cfg.hint, text: cfg.hint || '', color: faint, font: { size: 10 }, padding: { bottom: 4 } },
+          legend: { display: true, position: 'bottom', labels: { color: muted, boxWidth: 11, boxHeight: 11, font: { size: 10.5 }, usePointStyle: false } },
+          tooltip: {
+            callbacks: {
+              label: c => c.raw == null ? `${c.dataset.label}: —`
+                : `${c.dataset.label}: ` + (c.dataset.yAxisID === daysAxis
+                  ? c.raw.toFixed(1) + ' วัน'
+                  : Math.round(c.raw).toLocaleString('en-US') + ' บาท'),
+            },
+          },
         },
-        scales: {
-          x: { ticks: { color: muted, font: { size: 10.5 } }, grid: { display: false } },
-          y: { ticks: { color: muted, font: { size: 10.5 } }, grid: { color: line } },
-        },
+        scales: cfg.moneyBars
+          ? { x: { ticks: { color: muted, font: { size: 10.5 } }, grid: { display: false } }, y: moneyScale, y1: daysScale }
+          : { x: { ticks: { color: muted, font: { size: 10.5 } }, grid: { display: false } }, y: daysScale },
       },
     });
   }
@@ -367,13 +467,39 @@
       }
       const table = buildTrendTable(perPoint, tabKey);
       renderTrendTable(`trendTbl${suffix}`, trendLabels, table);
-      const specLabel = key => RATIO_SPEC.find(s => s.key === key).label;
-      const rowFor = key => table.find(r => r.label === specLabel(key));
-      const arRow = rowFor('arDays'), invRow = rowFor('invDays'), apRow = rowFor('apDays'), cccRow = rowFor('ccc');
-      drawTrendChart(`chartArDays${suffix}`, 'AR Days', trendLabels, arRow.values);
-      drawTrendChart(`chartInvDays${suffix}`, 'Inventory Days', trendLabels, invRow.values);
-      drawTrendChart(`chartApDays${suffix}`, 'AP Days', trendLabels, apRow.values);
-      drawTrendChart(`chartCcc${suffix}`, 'Cash Conversion Cycle', trendLabels, cccRow.values);
+
+      // Each panel pairs the balance the ratio was computed FROM (bars, in
+      // millions) with the ratio itself (line, in days) — `base` travels out
+      // of computeTabMetrics for exactly this, so the bar is literally the
+      // numerator of the line above it and stays true to each tab's own
+      // formula (SET's AR includes other receivable, Taiwan's is averaged).
+      const days = key => perPoint.map(m => (m[tabKey][key] || {}).value);
+      const bal = key => perPoint.map(m => (m[tabKey][key] || {}).base);
+      const t = Store.cycleTargets();
+      const sv = [cssVar('--sv1'), cssVar('--sv2'), cssVar('--sv3')];
+      const money = (id, title, key, target, hint) => drawCycleChart(`chart${id}${suffix}`, {
+        title, hint, labels: trendLabels, moneyBars: true, target,
+        bars: [{ label: title.replace(' Days', '') + ' (ล้านบาท)', data: bal(key), color: sv[0] }],
+        line: { label: title, data: days(key) },
+      });
+      money('ArDays', 'AR Days', 'arDays', t.ar, 'ยิ่งน้อยยิ่งดี');
+      money('InvDays', 'Inventory Days', 'invDays', t.inv, 'ยิ่งน้อยยิ่งดี');
+      money('ApDays', 'AP Days', 'apDays', t.ap, 'ยิ่งมากยิ่งดี');
+      // Cash cycle: every series is already in days, so they share one axis.
+      const cccBars = [
+        { label: 'AR Days', data: days('arDays'), color: sv[0] },
+        { label: 'Inventory Days', data: days('invDays'), color: sv[1] },
+        { label: 'AP Days', data: days('apDays'), color: sv[2] },
+      ];
+      // Taiwan's extra series goes at the END of the bar order, not beside
+      // AR where it belongs by meaning: a fourth hue next to the blue fails
+      // colour-blind separation, and after the amber it passes outright.
+      if (tabKey === 'tw') cccBars.push({ label: 'AR Vendor Days', data: days('arVendorDays'), color: cssVar('--sv4') });
+      drawCycleChart(`chartCcc${suffix}`, {
+        title: 'Cash Conversion Cycle', hint: 'ยิ่งน้อยยิ่งดี', labels: trendLabels,
+        moneyBars: false, target: t.ccc, bars: cccBars,
+        line: { label: 'Cash cycle', data: days('ccc') },
+      });
     }
 
     renderTrendTab('Th', 'th');
@@ -408,7 +534,27 @@
     });
   }
 
-  $('themeBtn').onclick = () => { const r = document.documentElement; r.setAttribute('data-theme', r.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'); };
+  /* Cash-cycle targets: one set shared by the three tabs, same as the period
+     toggle, and persisted — a KRI is a standing company target, not something
+     to retype every visit. Blank clears the line rather than drawing a zero. */
+  function renderKriRow() {
+    const t = Store.cycleTargets();
+    document.querySelectorAll('[data-kri]').forEach(el => { el.value = t[el.dataset.kri] == null ? '' : t[el.dataset.kri]; });
+  }
+  document.querySelectorAll('[data-kri]').forEach(el => el.onchange = () => {
+    const t = Object.assign({}, Store.cycleTargets());
+    const v = parseFloat(el.value);
+    if (el.value.trim() === '' || !isFinite(v)) delete t[el.dataset.kri]; else t[el.dataset.kri] = v;
+    Store.setCycleTargets(t);
+    renderKriRow();
+    render();
+  });
+
+  $('themeBtn').onclick = () => {
+    const r = document.documentElement;
+    r.setAttribute('data-theme', r.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+    render();                                  // charts read their colours from CSS variables
+  };
   document.querySelectorAll('[data-period-seg] button').forEach(b => b.onclick = () => {
     periodSel = b.dataset.q;
     renderPeriodSeg();
@@ -419,5 +565,6 @@
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('on', p.dataset.panel === b.dataset.t));
   });
   renderPeriodSeg();
+  renderKriRow();
   render();
 })();

@@ -29,6 +29,10 @@
     --glass-brd:rgba(70,80,96,.24); --glass-hi:rgba(255,255,255,.95);
     --accent:#44607f; --accent-ink:#2c4056; --accent-soft:rgba(68,96,127,.14);
     --good:#1f9d57; --good-soft:rgba(31,157,87,.14);
+    /* Chart series hues — validated for colour-blind separation and contrast
+       against the chart surface in each mode; dark is its own set of steps,
+       not a flip of these. */
+    --sv1:#3b6fd4; --sv2:#12a19a; --sv3:#c2762a; --sv4:#9153c4; --chart-halo:#fafbfc;
     --warn:#c07d10; --warn-soft:rgba(210,140,20,.16);
     --bad:#e0352b;  --bad-soft:rgba(224,53,43,.13);
     --blur:saturate(118%) blur(5px);
@@ -46,6 +50,7 @@
       --glass-brd:rgba(255,255,255,.13); --glass-hi:rgba(255,255,255,.17);
       --accent:#8fa6c3; --accent-ink:#bdcde3; --accent-soft:rgba(143,166,195,.20);
       --good:#37c26e; --good-soft:rgba(55,194,110,.16);
+      --sv1:#5d8ce6; --sv2:#1a9e90; --sv3:#bd8038; --sv4:#9b6ecd; --chart-halo:#33373d;
       --warn:#e0a53a; --warn-soft:rgba(224,165,58,.16);
       --bad:#ff5b52;  --bad-soft:rgba(255,91,82,.16);
       --shadow:0 1px 1px rgba(0,0,0,.3), 0 14px 36px rgba(0,0,0,.4);
@@ -59,6 +64,10 @@
     --glass-brd:rgba(70,80,96,.24); --glass-hi:rgba(255,255,255,.95);
     --accent:#44607f; --accent-ink:#2c4056; --accent-soft:rgba(68,96,127,.14);
     --good:#1f9d57; --good-soft:rgba(31,157,87,.14);
+    /* Chart series hues — validated for colour-blind separation and contrast
+       against the chart surface in each mode; dark is its own set of steps,
+       not a flip of these. */
+    --sv1:#3b6fd4; --sv2:#12a19a; --sv3:#c2762a; --sv4:#9153c4; --chart-halo:#fafbfc;
     --warn:#c07d10; --warn-soft:rgba(210,140,20,.16);
     --bad:#e0352b; --bad-soft:rgba(224,53,43,.13);
     --shadow:0 1px 1px rgba(20,40,80,.04), 0 10px 30px rgba(20,40,80,.10);
@@ -71,6 +80,7 @@
     --glass-brd:rgba(255,255,255,.13); --glass-hi:rgba(255,255,255,.17);
     --accent:#8fa6c3; --accent-ink:#bdcde3; --accent-soft:rgba(143,166,195,.20);
     --good:#37c26e; --good-soft:rgba(55,194,110,.16);
+      --sv1:#5d8ce6; --sv2:#1a9e90; --sv3:#bd8038; --sv4:#9b6ecd; --chart-halo:#33373d;
     --warn:#e0a53a; --warn-soft:rgba(224,165,58,.16);
     --bad:#ff5b52; --bad-soft:rgba(255,91,82,.16);
     --shadow:0 1px 1px rgba(0,0,0,.3), 0 14px 36px rgba(0,0,0,.4);
@@ -297,6 +307,15 @@ td.stmt-amt.neg{color:var(--bad)}
 .tab-panel{display:none}
 .tab-panel.on{display:block}
 .chart-box{position:relative;height:220px}
+.chart-grid .chart-box{height:270px}          /* combo panels carry a legend + axis titles */
+/* KRI target row above the trend charts */
+.kri-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;padding:9px 13px;
+  border:1px solid var(--glass-brd);border-radius:var(--radius-sm);background:var(--glass);font-size:12px;color:var(--muted)}
+.kri-row .lbl{font-weight:650;color:var(--ink)}
+.kri-row label{display:inline-flex;align-items:center;gap:6px}
+.kri-row input{width:58px;text-align:center;font-family:var(--mono);font-size:12px;padding:3px 5px;
+  border:1px solid var(--line-strong);border-radius:7px;background:var(--glass-hi);color:var(--ink)}
+.kri-row .unit{color:var(--faint)}
 .chart-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:13px}
 @media(max-width:900px){.chart-grid{grid-template-columns:1fr}}
 .tbl-scroll{max-height:440px;overflow-y:auto}
