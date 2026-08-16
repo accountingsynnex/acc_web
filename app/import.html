@@ -38,11 +38,11 @@
         <div id="periodSwitcherNote" class="muted" style="display:none;font-size:12.5px;margin:-4px 0 12px"></div>
         <div class="wb-drop" id="wbDrop" role="button" tabindex="0">
           <span class="wbico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 9v11M4 14h16"/></svg></span>
-          <span style="min-width:0;flex:1"><span class="wbt" id="wbT">อัปโหลด Workpaper ทั้งไฟล์ (.xlsx)</span><span class="wbd" id="wbD">ลากไฟล์งบ Conso ทั้งไฟล์มาวาง — ระบบแยก TB ทุกบริษัท (SYN · SVP · SYNIN · SWOP) ให้อัตโนมัติ</span><span class="wb-loadbar" id="wbLoad"><span></span></span></span>
+          <span style="min-width:0;flex:1"><span class="wbt" id="wbT">อัปโหลด Workpaper ทั้งไฟล์ (.xlsx) — เลือกได้หลายไฟล์พร้อมกัน</span><span class="wbd" id="wbD">ลากไฟล์งบ Conso ทั้งไฟล์มาวาง — ระบบแยก TB ทุกบริษัท (SYN · SVP · SYNIN · SWOP) ให้อัตโนมัติ · เลือก/ลากหลายไฟล์พร้อมกันได้ (เช่น 12 เดือนทั้งปี) แต่ละไฟล์จะถูกอ่านเดือนจากชื่อไฟล์แล้วบันทึกเป็นงวดของตัวเองอัตโนมัติ ไม่กระทบงวดปัจจุบัน</span><span class="wb-loadbar" id="wbLoad"><span></span></span></span>
           <span class="wbtag" id="wbTag">แยกให้อัตโนมัติ</span>
           <button type="button" class="wbrm" id="wbRemove" hidden>เอาไฟล์ออก</button>
         </div>
-        <input type="file" id="wbInput" class="sr-only" accept=".xlsx,.xls" />
+        <input type="file" id="wbInput" class="sr-only" accept=".xlsx,.xls" multiple />
         <div class="wb-or">หรือใส่ทีละบริษัท (CSV)</div>
         <div class="uploads" id="uploads"></div>
         <input type="file" id="fileInput" class="sr-only" accept=".csv,.tsv,.txt,.xlsx,.xls" />

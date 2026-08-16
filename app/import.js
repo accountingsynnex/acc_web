@@ -19,8 +19,44 @@
   // Statements, ...) always reads the live one, so switching this never
   // disturbs the active close.
   let activePeriod = '';
+  // Guards the batch importer below against overlapping itself — it drives
+  // activePeriod across an async loop, and a second batch (or a manual
+  // switcher change) starting mid-loop would race it and write a file into
+  // the wrong period.
+  let batchRunning = false;
 
   const $ = id => document.getElementById(id);
+
+  // A whole-year drop names every file after its own month, in one of a
+  // few forms seen across real workbooks so far: "...2025122025..." (year +
+  // month + the same year again, no separator), "...202501__2025..." or
+  // "...2025-06-2025..." (same triple, with separators). Stripping
+  // non-digits first and matching year-month-year as one run handles all of
+  // those the same way; a plain "YYYY-MM"/"YYYY_MM" is tried as a fallback
+  // for a filename that doesn't repeat the year. Returns null rather than
+  // guessing when neither shows up, so an unrecognised name is skipped and
+  // reported instead of landing in the wrong period.
+  function periodKeyFromFilename(name) {
+    const digits = String(name).replace(/\D/g, '');
+    const rep = /(\d{4})(\d{2})\1/.exec(digits);
+    if (rep) {
+      const mo = +rep[2];
+      if (mo >= 1 && mo <= 12) return `${rep[1]}-${String(mo).padStart(2, '0')}`;
+    }
+    const plain = /(20\d{2})[-_. ]?(\d{2})(?!\d)/.exec(String(name));
+    if (plain) {
+      const mo = +plain[2];
+      if (mo >= 1 && mo <= 12) return `${plain[1]}-${String(mo).padStart(2, '0')}`;
+    }
+    return null;
+  }
+
+  const TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+  const labelFromKey = key => {
+    const m = /^(\d{4})-(\d{2})$/.exec(key);
+    if (!m) return key;
+    return `${TH_MONTHS[+m[2] - 1]} ${+m[1] + 543}`;
+  };
   const money = n => {
     const a = Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     return n < 0 ? '(' + a + ')' : a;
@@ -146,8 +182,13 @@
 
   // Read the whole consolidation workbook: split out each entity's TB sheet
   // and parse the elimination/adjustment journals into double-entry lines.
-  function ingestWorkbook(file) {
-    if (typeof XLSX === 'undefined') { alert('ตัวอ่าน Excel ยังไม่พร้อม'); return; }
+  // notify defaults to alert (a single dropped file); the batch importer
+  // below passes a collector instead, so importing 12 files doesn't pop 12
+  // blocking dialogs — and awaits the returned promise to run them one at a
+  // time rather than all at once.
+  function ingestWorkbook(file, notify = alert) {
+    return new Promise(resolve => {
+    if (typeof XLSX === 'undefined') { notify('ตัวอ่าน Excel ยังไม่พร้อม'); resolve(); return; }
     $('wbDrop').classList.add('busy');
     $('wbDrop').classList.remove('loaded');       // the previous file's receipt is about to be replaced
     $('wbRemove').hidden = true;
@@ -155,7 +196,7 @@
     $('wbT').textContent = 'กำลังอ่านและแยกไฟล์…';
     $('wbD').textContent = file.name;
     const reader = new FileReader();
-    reader.onerror = () => { alert('อ่านไฟล์ไม่ได้'); resetWbDrop(); };
+    reader.onerror = () => { notify('อ่านไฟล์ไม่ได้'); resetWbDrop(); resolve(); };
     reader.onload = () => setTimeout(() => {          // yield so the "reading" state paints first
       try {
         // Parse only the entity TB + journal sheets and cap rows — the workbook
@@ -224,8 +265,8 @@
             skipped.push(`${ent.code} (ชีต "${sheetName}": ${e.message})`);
           }
         }
-        if (!added.length) alert('ไม่พบชีต TB รายบริษัท (TB SYN / TB SVP / TB SYNIN / TB SWOP) ในไฟล์นี้');
-        else if (skipped.length) alert(`นำเข้าได้ ${added.length} บริษัท แต่ข้าม: ${skipped.join(', ')}`);
+        if (!added.length) notify('ไม่พบชีต TB รายบริษัท (TB SYN / TB SVP / TB SYNIN / TB SWOP) ในไฟล์นี้');
+        else if (skipped.length) notify(`นำเข้าได้ ${added.length} บริษัท แต่ข้าม: ${skipped.join(', ')}`);
 
         // An archived period gets its own Eliminate/AJE sheets read the same
         // way the live close does — its journals live alongside its tb
@@ -251,10 +292,60 @@
             journalSources: journalSheetNames,
           });
         }
-      } catch (e) { alert('อ่านไฟล์ Excel ไม่ได้: ' + e.message); }
+      } catch (e) { notify('อ่านไฟล์ Excel ไม่ได้: ' + e.message); }
       resetWbDrop(); renderAll();
+      resolve();
     }, 30);
     reader.readAsArrayBuffer(file);
+    });
+  }
+
+  // Several files dropped/selected at once — a whole year's worth of monthly
+  // workbooks in one go, instead of switching the period dropdown and
+  // dropping one file, 12 times over. Each file becomes (or updates) its OWN
+  // saved period, auto-keyed and auto-created from the month in its own
+  // filename — never the live/current period, so a bulk drop can't silently
+  // overwrite the close actually being worked on. Sequential, not parallel:
+  // each workbook is several MB and briefly owns `activePeriod` while it's
+  // being read, so running them one at a time (awaiting ingestWorkbook's
+  // promise) is what keeps that shared variable pointed at the right period.
+  async function ingestWorkbooksBatch(files, skippedNonXlsx) {
+    if (batchRunning) { alert('กำลังนำเข้าไฟล์ชุดก่อนหน้าอยู่ กรุณารอให้เสร็จก่อน'); return; }
+    batchRunning = true;
+    $('periodSwitcher').disabled = true;
+    const prevActive = activePeriod;
+    const notes = skippedNonXlsx ? [`ข้ามไฟล์ที่ไม่ใช่ .xlsx ${skippedNonXlsx} ไฟล์`] : [];
+    let recognized = 0;
+    try {
+      for (const file of files) {
+        const key = periodKeyFromFilename(file.name);
+        if (!key) { notes.push(`"${file.name}" — แยกรหัสงวด (ปี-เดือน) จากชื่อไฟล์ไม่ได้ ข้ามไฟล์นี้`); continue; }
+        if (!Store.getPeriod(key)) { Store.tbFor(key); Store.setPeriodLabel(key, labelFromKey(key)); }
+        activePeriod = key;
+        recognized++;
+        await ingestWorkbook(file, msg => notes.push(`งวด ${key} (${file.name}): ${msg}`));
+      }
+    } finally {
+      activePeriod = prevActive;
+      batchRunning = false;
+      $('periodSwitcher').disabled = false;
+      renderPeriodSwitcher(); renderPeriods(); renderAll();
+    }
+    alert(`นำเข้า ${recognized}/${files.length} ไฟล์เป็นงวดที่บันทึกไว้แล้ว (แยกงวดจากชื่อไฟล์อัตโนมัติ) — ใช้ดูแนวโน้มที่หน้า Ratios${notes.length ? `\n\n${notes.join('\n')}` : ''}`);
+  }
+
+  // A single file keeps the original one-file flow untouched (imports into
+  // whichever period the switcher is currently on); more than one always
+  // goes through the batch path above, which only ever touches periods of
+  // its own — untagged non-.xlsx files are dropped silently there rather
+  // than raising one alert per stray file.
+  function handleWorkbookFiles(fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    if (files.length === 1) { ingestWorkbook(files[0]); return; }
+    const xlsxFiles = files.filter(isXlsx);
+    if (!xlsxFiles.length) { alert('ไม่พบไฟล์ .xlsx ในไฟล์ที่เลือก'); return; }
+    ingestWorkbooksBatch(xlsxFiles, files.length - xlsxFiles.length);
   }
 
   async function loadSamples() {
@@ -434,7 +525,7 @@
   }
 
   $('fileInput').onchange = e => { const f = e.target.files[0]; if (f && pendingEntity) (isXlsx(f) ? ingestEntityXlsx(pendingEntity, f) : ingest(pendingEntity, f)); e.target.value = ''; };
-  $('wbInput').onchange = e => { if (e.target.files[0]) ingestWorkbook(e.target.files[0]); e.target.value = ''; };
+  $('wbInput').onchange = e => { handleWorkbookFiles(e.target.files); e.target.value = ''; };
   // A <div role="button"> rather than a real <button>, because the "remove"
   // control lives inside it and a button can't nest inside a button.
   $('wbDrop').onclick = e => { if (e.target.closest('#wbRemove')) return; $('wbInput').click(); };
@@ -442,7 +533,7 @@
   $('wbRemove').onclick = e => { e.stopPropagation(); removeWorkbook(); };
   $('wbDrop').addEventListener('dragover', e => { e.preventDefault(); $('wbDrop').classList.add('drag'); });
   $('wbDrop').addEventListener('dragleave', () => $('wbDrop').classList.remove('drag'));
-  $('wbDrop').addEventListener('drop', e => { e.preventDefault(); $('wbDrop').classList.remove('drag'); const f = e.dataTransfer.files[0]; if (f) ingestWorkbook(f); });
+  $('wbDrop').addEventListener('drop', e => { e.preventDefault(); $('wbDrop').classList.remove('drag'); handleWorkbookFiles(e.dataTransfer.files); });
   $('filterSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
     filter = b.dataset.f; $('filterSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); renderAll();
   });
