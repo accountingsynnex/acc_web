@@ -22,29 +22,58 @@
   const fmt = (v, unit) => v == null ? '—' : (unit === 'x' ? v.toFixed(2) + '×' : unit === 'pct' ? v.toFixed(1) + '%' : unit === 'days' ? v.toFixed(1) + ' วัน' : v.toFixed(2));
   const M = n => (n / 1e6).toLocaleString('en-US', { maximumFractionDigits: 0 }) + 'M';
 
-  // Which period the imported figures cover — ONE control, identical on all
-  // 3 tabs (Q1 · Q2 · Q3 · Q4), replacing both the free-typed month count
-  // and SET's separate รายไตรมาส/เต็มปี toggle. It's a property of the
-  // imported file, not of a tab, so the three toggles share one value.
-  //
-  // P&L accounts in a trial balance read cumulative since the start of the
-  // fiscal year, so the quarter picked IS the month count: at Q2 the P&L
-  // already carries 6 months. That's what both things the toggle drives
-  // need — turning a balance into days (every tab's cash cycle) and
-  // annualising a flow (SET's ROA/ROE/Asset Turnover) — so picking the
-  // quarter now determines them exactly instead of by a typed guess.
-  //
-  // There is no separate "full year" option because Q4 already is one: at
-  // Q4 the cumulative P&L covers all 12 months, so a full-year button would
-  // compute exactly the same numbers under a second name.
+  // Which period the top cards show — ONE control, identical on all 3 tabs
+  // (Q1 · Q2 · Q3 · Q4). Once ANYTHING has been saved on Import's "งวดที่
+  // บันทึกไว้" (a single click, or the whole-year batch-drop that reads a
+  // period straight from each file's own name), the buttons stop being a
+  // manual month-count guess against the live TB and instead pick the
+  // saved period that actually ends that quarter — Q1 → that year's own
+  // "-03" period, Q2 → "-06", Q3 → "-09", Q4 → "-12" — so four real monthly
+  // closes drive four real quarters instead of one file read four ways.
+  // Before anything is archived at all (a brand new import, nothing saved
+  // yet) the buttons fall back to their original job: told the live TB's
+  // own month count directly, so a first-time user isn't forced to archive
+  // a period just to see a ratio. PERIOD_OPTS' months (3/6/9/12) still
+  // supplies that fallback and the days-per-quarter math either way — a
+  // saved period's own key would derive the same number regardless (see
+  // monthsFromKey below); it's only the DATA source that changes.
   const PERIOD_OPTS = [
     { key: 'q1', label: 'Q1', months: 3 },
     { key: 'q2', label: 'Q2', months: 6 },
     { key: 'q3', label: 'Q3', months: 9 },
     { key: 'q4', label: 'Q4', months: 12 },
   ];
+  const QUARTER_END_MONTH = { q1: '03', q2: '06', q3: '09', q4: '12' };
   let periodSel = 'q1';
   const periodOpt = () => PERIOD_OPTS.find(o => o.key === periodSel) || PERIOD_OPTS[0];
+
+  // Import's own period-key convention is "YYYY-MM" (see the "รหัสงวด เช่น
+  // 2026-06" placeholder there) — the month is right there in the key, so
+  // both the quarter resolver below and the trend loop further down read it
+  // the same way, rather than guessing from a separately-typed label.
+  const monthsFromKey = key => {
+    const m = /^\d{4}-(\d{2})$/.exec(String(key || ''));
+    const n = m ? +m[1] : NaN;
+    return n >= 1 && n <= 12 ? n : null;
+  };
+
+  // Which saved period (if any) this quarter's own close resolves to, for
+  // whichever year is the most recent one with anything saved at all — so
+  // switching Q1→Q4 stays inside one consistent year instead of jumping to
+  // whatever year happens to have that one quarter. `archived` is false
+  // only when NOTHING has ever been saved (the pre-archive fallback); once
+  // it's true, a quarter with no matching period is a real "not saved yet"
+  // state, not a silent fallback to the live TB.
+  function resolveQuarter(saved) {
+    if (!saved.length) return { archived: false };
+    let year = null;
+    for (const p of saved) {
+      const m = /^(\d{4})-\d{2}$/.exec(p.key);
+      if (m && (!year || m[1] > year)) year = m[1];
+    }
+    const key = `${year}-${QUARTER_END_MONTH[periodSel]}`;
+    return { archived: true, year, key, period: Store.getPeriod(key) };
+  }
 
   // The single ordered ratio list shared by all 3 tabs — group label, a
   // stable key (used by computeTabMetrics, the trend table and the trend
@@ -410,33 +439,72 @@
   }
 
   function render() {
-    const g = FS.grouped();
-    renderPeriodSeg();
-    if (!g) {
-      $('banner').innerHTML = `<div class="check no" style="margin-bottom:14px"><div class="ico">!</div><div><div class="t">ยังไม่ได้นำเข้างบทดลอง</div><div class="d">ไปที่ <a class="linkish" href="import.html">Import TB</a> ก่อน</div></div></div>`;
-      $('th').innerHTML = ''; $('tw').innerHTML = ''; $('set').innerHTML = '';
-      ['Th', 'Tw', 'Set'].forEach(suffix => { $(`trendEmpty${suffix}`).style.display = ''; $(`trendBody${suffix}`).style.display = 'none'; });
-      destroyAllCharts();
-      return;
-    }
-    const bs = FS.buildBS(g), pl = FS.buildPL(g);
+    const saved = Store.listPeriods().slice().sort((a, b) => a.key < b.key ? -1 : 1);
+    const q = resolveQuarter(saved);
 
-    // Opening balances (the imported file's own opening-balance column) —
-    // used as the LIVE point's averaging partner for Taiwan/SET below.
-    const openingRows = Store.openingRows();
-    const openingG = openingRows ? FS.grouped(openingRows) : null;
-    const openingBS = openingG ? FS.buildBS(openingG) : null;
-    const avgNote = openingBS
+    // Live TB — still what "ปัจจุบัน" means in the trend series further
+    // down, and (only once nothing has ever been archived) still what the
+    // top cards themselves read from too. See resolveQuarter above for why
+    // the two aren't always the same source anymore.
+    const liveG = FS.grouped();
+    const liveBs = liveG ? FS.buildBS(liveG) : null, livePl = liveG ? FS.buildPL(liveG) : null;
+
+    const openingBSOf = key => {
+      const rows = Store.openingRows(key);
+      const g2 = rows ? FS.grouped(rows) : null;
+      return g2 ? FS.buildBS(g2) : null;
+    };
+    const avgNoteFor = openingBS => openingBS
       ? `ยอดเฉลี่ยต้นงวด+ปลายงวด (ยอดยกมาจากไฟล์ที่นำเข้า: ${M(openingBS.totalAssets)})`
       : '⚠ ไฟล์ที่นำเข้าไม่มีคอลัมน์ยอดยกมา (Opening balance) ใช้ยอดปลายงวดแทนค่าเฉลี่ย';
 
-    const opt = periodOpt(), periodMonths = opt.months, periodLabel = opt.label;
-    const annualizeFactor = 12 / periodMonths;
-    const ytdNote = annualizeFactor > 1 ? ` × annualize ${annualizeFactor.toFixed(2)} (${periodMonths} เดือน→12)` : '';
+    let cards = null;
+    if (q.archived) {
+      if (q.period) {
+        const prows = Store.finalRows(q.key);
+        const pg = prows && prows.length ? FS.grouped(prows) : null;
+        if (pg) {
+          const openingBS = openingBSOf(q.key);
+          const periodMonths = monthsFromKey(q.key) || periodOpt().months;
+          cards = {
+            bs: FS.buildBS(pg), pl: FS.buildPL(pg), openingBS, avgNote: avgNoteFor(openingBS),
+            periodMonths, periodLabel: `${periodOpt().label} · ${q.period.label}`,
+          };
+        }
+      }
+    } else if (liveG) {
+      const openingBS = openingBSOf();
+      cards = { bs: liveBs, pl: livePl, openingBS, avgNote: avgNoteFor(openingBS), periodMonths: periodOpt().months, periodLabel: periodOpt().label };
+    }
+    const trendDefaultMonths = cards ? cards.periodMonths : periodOpt().months;
 
-    renderTabCards('th', computeTabMetrics('th', bs, pl, null, { periodMonths, periodLabel }));
-    renderTabCards('tw', computeTabMetrics('tw', bs, pl, openingBS, { periodMonths, periodLabel, avgNote }));
-    renderTabCards('set', computeTabMetrics('set', bs, pl, openingBS, { annualizeFactor, ytdNote, avgNote, periodMonths, periodLabel }));
+    renderPeriodSeg();
+
+    if (!cards) {
+      const msg = q.archived
+        ? `<div class="t">ยังไม่ได้บันทึกงวดสิ้น ${esc(periodOpt().label)} ของปี ${esc(q.year)}</div><div class="d">งวดที่ต้องมี: <b>${esc(q.key)}</b> — ไปนำเข้าและกด "บันทึกงวดนี้" ที่หน้า <a class="linkish" href="import.html">Import</a></div>`
+        : `<div class="t">ยังไม่ได้นำเข้างบทดลอง</div><div class="d">ไปที่ <a class="linkish" href="import.html">Import TB</a> ก่อน</div>`;
+      $('th').innerHTML = $('tw').innerHTML = $('set').innerHTML = `<div class="check no" style="margin-bottom:14px"><div class="ico">!</div><div>${msg}</div></div>`;
+      $('banner').innerHTML = '';
+      if (!saved.length && !liveG) {
+        ['Th', 'Tw', 'Set'].forEach(suffix => { $(`trendEmpty${suffix}`).style.display = ''; $(`trendBody${suffix}`).style.display = 'none'; });
+        destroyAllCharts();
+        return;
+      }
+      // Falls through — the trend section below can still have something to
+      // show (other saved periods and/or the live TB) even though THIS
+      // quarter's own cards don't.
+    } else {
+      const { bs, pl, openingBS, avgNote, periodMonths, periodLabel } = cards;
+      const annualizeFactor = 12 / periodMonths;
+      const ytdNote = annualizeFactor > 1 ? ` × annualize ${annualizeFactor.toFixed(2)} (${periodMonths} เดือน→12)` : '';
+
+      renderTabCards('th', computeTabMetrics('th', bs, pl, null, { periodMonths, periodLabel }));
+      renderTabCards('tw', computeTabMetrics('tw', bs, pl, openingBS, { periodMonths, periodLabel, avgNote }));
+      renderTabCards('set', computeTabMetrics('set', bs, pl, openingBS, { annualizeFactor, ytdNote, avgNote, periodMonths, periodLabel }));
+      $('banner').innerHTML = `<div class="check ok" style="margin-bottom:14px"><div class="ico">✓</div><div><div class="t">${q.archived ? `คำนวณจากงวดที่บันทึกไว้ <b>${esc(q.period.label)}</b>` : 'คำนวณจากงบที่โรลอัปสด'}</div>
+        <div class="d">DSCR และ LT Debt/EBITDA ต้องใช้ตารางกระแสเงินสด/เงินกู้ — ดูหน้า <a class="linkish" href="cashflow.html">Cash Flow</a></div></div></div>`;
+    }
 
     // ---- Quarterly trend ("แนวโน้มรายไตรมาส") on all 3 tabs — recomputes
     // every ratio above once per period saved via Import's "งวดที่บันทึกไว้"
@@ -466,12 +534,6 @@
     // is right there in the key; a key that doesn't parse that way (a
     // custom label, from before that convention) falls back to the shared
     // toggle, same as before this existed.
-    const monthsFromKey = key => {
-      const m = /^\d{4}-(\d{2})$/.exec(String(key || ''));
-      const n = m ? +m[1] : NaN;
-      return n >= 1 && n <= 12 ? n : null;
-    };
-    const saved = Store.listPeriods().slice().sort((a, b) => a.key < b.key ? -1 : 1);
     const trendList = [];
     for (const p of saved) {
       const prows = Store.finalRows(p.key);
@@ -480,11 +542,15 @@
       const pMonths = monthsFromKey(p.key);
       trendList.push({ label: p.label, bs: FS.buildBS(pg), pl: FS.buildPL(pg), months: pMonths, monthsGuessed: pMonths == null });
     }
-    trendList.push({ label: 'ปัจจุบัน', bs, pl, months: periodMonths, monthsGuessed: false });
+    // "ปัจจุบัน" is always the live TB specifically (not whichever period the
+    // top cards above resolved to) — omitted outright when there's no live
+    // TB at all, rather than duplicating one of the saved points under a
+    // confusing second label.
+    if (liveG) trendList.push({ label: 'ปัจจุบัน', bs: liveBs, pl: livePl, months: periodOpt().months, monthsGuessed: false });
     const trendLabels = trendList.map(p => p.label);
     const perPoint = trendList.map((pt, i) => {
       const prevBs = i > 0 ? trendList[i - 1].bs : null;
-      const pm = pt.months || periodMonths;
+      const pm = pt.months || trendDefaultMonths;
       const pf = 12 / pm;
       return {
         th: computeTabMetrics('th', pt.bs, pt.pl, null, { periodMonths: pm, periodLabel: pt.label }),
@@ -554,10 +620,6 @@
     renderTrendTab('Th', 'th');
     renderTrendTab('Tw', 'tw');
     renderTrendTab('Set', 'set');
-
-    $('banner').innerHTML = !g ? '' : `<div class="check ok" style="margin-bottom:14px"><div class="ico">✓</div><div><div class="t">คำนวณจากงบที่โรลอัปสด</div>
-      <div class="d">DSCR และ LT Debt/EBITDA ต้องใช้ตารางกระแสเงินสด/เงินกู้ — ดูหน้า <a class="linkish" href="cashflow.html">Cash Flow</a></div></div></div>`;
-
   }
 
   /* Paint the Q1..Q4/ทั้งปี toggle on all 3 tabs from the one shared value,
@@ -567,19 +629,36 @@
      don't (their sourced formulas use the YTD flow against an ending or
      averaged balance without scaling it up). */
   function renderPeriodSeg() {
-    const opt = periodOpt(), factor = 12 / opt.months;
+    const saved = Store.listPeriods();
+    const q = resolveQuarter(saved);
+    const opt = periodOpt();
     document.querySelectorAll('[data-period-seg]').forEach(seg => {
       seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.q === periodSel));
     });
     document.querySelectorAll('[data-period-note]').forEach(el => {
       const tab = el.closest('.tab-panel').dataset.panel;
+      if (q.archived) {
+        if (!q.period) {
+          el.innerHTML = `⚠ ยังไม่ได้บันทึกงวดสิ้น <b>${esc(opt.label)}</b> ของปี ${esc(q.year)} (ต้องมีงวดรหัส <code>${esc(q.key)}</code>) — ไปนำเข้าและกด "บันทึกงวดนี้" ที่หน้า <a class="linkish" href="import.html">Import</a>`;
+          return;
+        }
+        const months = monthsFromKey(q.key) || opt.months, factor = 12 / months;
+        const extra = tab === 'set'
+          ? (factor > 1
+            ? ` และปรับ ROA/ROE/Total Asset Turnover เป็นรายปี <b>×${factor.toFixed(2)}</b>`
+            : ' และไม่ต้องปรับ ROA/ROE/Total Asset Turnover เป็นรายปี (เต็มปีแล้ว)')
+          : ' (ROA/ROE/Asset Turnover ของแท็บนี้ใช้ยอดสะสมตรงๆ ตามสูตรบริษัท ไม่ปรับเป็นรายปี)';
+        el.innerHTML = `ใช้งวดที่บันทึกไว้ <b>${esc(q.period.label)}</b> (รหัสงวด ${esc(q.key)}) เป็นข้อมูลของ <b>${esc(opt.label)}</b> — งบทดลองสะสมกำไรขาดทุนตั้งแต่ต้นปีบัญชี จึงเท่ากับ <b>${months} เดือน</b>${extra}`;
+        return;
+      }
+      const factor = 12 / opt.months;
       const extra = tab === 'set'
         ? (factor > 1
           ? ` และปรับ ROA/ROE/Total Asset Turnover เป็นรายปี <b>×${factor.toFixed(2)}</b>`
           : ' และไม่ต้องปรับ ROA/ROE/Total Asset Turnover เป็นรายปี (เต็มปีแล้ว)')
         : ' (ROA/ROE/Asset Turnover ของแท็บนี้ใช้ยอดสะสมตรงๆ ตามสูตรบริษัท ไม่ปรับเป็นรายปี)';
       const full = opt.months === 12 ? ' คือเต็มปี' : '';
-      el.innerHTML = `เลือกงวดที่งบซึ่งนำเข้าครอบคลุม — งบทดลองสะสมกำไรขาดทุนตั้งแต่ต้นปีบัญชี <b>${esc(opt.label)}</b> จึงเท่ากับ <b>${opt.months} เดือน</b>${full} ใช้แปลงยอดคงเหลือเป็นจำนวนวันในวงจรเงินสด${extra} — ค่านี้ใช้ร่วมกันทั้ง 3 แท็บ`;
+      el.innerHTML = `เลือกงวดที่งบซึ่งนำเข้าครอบคลุม — งบทดลองสะสมกำไรขาดทุนตั้งแต่ต้นปีบัญชี <b>${esc(opt.label)}</b> จึงเท่ากับ <b>${opt.months} เดือน</b>${full} ใช้แปลงยอดคงเหลือเป็นจำนวนวันในวงจรเงินสด${extra} — ค่านี้ใช้ร่วมกันทั้ง 3 แท็บ (ยังไม่มีงวดที่บันทึกไว้ — บันทึกที่ Import เพื่อให้ปุ่มนี้ดึงจากงวดจริงแทน)`;
     });
   }
 
