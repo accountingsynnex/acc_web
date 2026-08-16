@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { RULEBOOK } = require('../engine/rulebook.js');
-const { parseTB, validateTB, applyRulebook } = require('../engine/group-engine.js');
+const { parseTB, validateTB, applyRulebook, toNumber, isCreditNatured, parseStatementReport } = require('../engine/group-engine.js');
 
 let failures = 0;
 const ok = (cond, msg) => { console.log(`${cond ? '  ok ' : ' FAIL'}  ${msg}`); if (!cond) failures++; };
@@ -35,30 +35,60 @@ const cashLine = res.lines.find(l => l.code === '1110200');
 ok(cashLine && cashLine.rule && cashLine.rule.group === 'Cash in Hand',
    `1110200 auto-grouped to "${cashLine && cashLine.rule ? cashLine.rule.group : '?'}"`);
 
-// 6) historical statement inputs: only the inputs, never the stated ratios,
-//    and a quarter column that repeats the year's figures is dropped rather
-//    than read as three months of a full year's revenue.
-const FsHistory = require('../engine/fs-history.js');
-const histSheet = [
-  ['Ratios', 'Q1-26', 'Q2-26', 'Q3-26', '2026', 'KPI'],
-  ['AR Days', 50, 51, 52, 53, 45],
-  ['Cash cycle', 60, 61, 62, 63, 55],
-  ['Information', 'Q1-26', 'Q2-26', 'Q3-26', '2026', null],
-  ['Total assets', 1000, 1100, 1200, 1200, null],
-  ['Total revenues', 500, 520, 540, 2000, null],
-  ['Total COGS', 400, 420, 440, 1700, null],
-  ['AR', 300, 310, 320, 320, null],
-  ['Inventory', 200, 210, 220, 220, null],
-  ['AP', 150, 160, 170, 170, null],
+// 6) toNumber must not mangle a real number — a native Excel cell (as
+// opposed to text like "1,234.56") needs no cleanup, and running it through
+// the string-cleanup path used to strip the "e" out of scientific notation,
+// turning a formula's near-zero float residue (9e-12) into a real few-baht
+// error at the scale trial balances are read at.
+ok(Math.abs(toNumber(9.094947017729282e-12)) < 1e-6, `tiny float residue stays ~0 (got ${toNumber(9.094947017729282e-12)})`);
+ok(toNumber(-2.5e-10) === -2.5e-10, 'negative scientific notation preserved');
+ok(toNumber('1,234.56') === 1234.56, 'thousand separators still stripped from text');
+ok(toNumber('(1,234)') === -1234, 'parenthesised negative still handled');
+
+// 7) isCreditNatured — the same rule the synthetic sample generator uses
+// (tools/make_sample_tb.py): liabilities/equity/revenue/other-income code
+// ranges, plus a contra account named as one even inside an asset section.
+ok(isCreditNatured('2110000', 'TRADE PAYABLE') === true, 'liability code is credit-natured');
+ok(isCreditNatured('4101000', 'REVENUES FROM SALES') === true, 'revenue code is credit-natured');
+ok(isCreditNatured('1110200', 'PETTY CASH') === false, 'asset code is not credit-natured');
+ok(isCreditNatured('5100000', 'COST OF GOODS SOLD') === false, 'cost-of-sales code is not credit-natured');
+ok(isCreditNatured('1139000', 'PROVISION FOR BAD DEBTS') === true, 'a contra-asset is credit-natured by name, despite its 1xxxxxx code');
+
+// 8) parseStatementReport — a combined BS+P&L management report (seen in a
+// real workbook, where one entity's own "TB" tab held this instead of a
+// plain account-list export) states every account at its own natural
+// positive magnitude rather than this app's raw debit+/credit- convention,
+// with subtotal rows (a 1-2 digit group index in the code column) sitting
+// above each group's real accounts. A minimal fixture of that shape:
+const REPORT_FIXTURE = [
+  ['SAMPLE COMPANY LIMITED'],
+  ['THAI BAHT'],
+  [],
+  ['INCOME STATEMENT (SYNNEX FORMAT)', , , , , , , , , 'CY-YTD'],
+  ['For the 3 Months ended 01/03/2025'],
+  [, , , 45747, , 'SALE', , 'ADMIN', , 'Y2025'],   // 45747 = 2025-03-31 as an Excel day-serial
+  ['Operating Revenue'],
+  [4101000, 'REVENUES FROM SALES', , 1000, , 1000, , 0, , 1000],
+  [5100000, 'COST OF GOODS SOLD', , 1000, , 1000, , 0, , 1000],
+  [1, 'Cash and equivalents', , 500, , 500, , 0, , 500],   // group subtotal — must be skipped, not read as an account
+  [1110200, 'PETTY CASH', , 500, , 500, , 0, , 500],
+  [2110000, 'TRADE PAYABLE', , 500, , 0, , 500, , 500],
 ];
-const hist = FsHistory.parseFsSheet(histSheet);
-ok(hist && hist.labels.length === 4, `read ${hist ? hist.labels.length : 0} periods of inputs`);
-ok(hist && hist.arDays === undefined && hist.ccc === undefined, 'stated ratios ignored — inputs only');
-ok(hist && JSON.stringify(hist.months) === JSON.stringify([3, 3, 3, 12]),
-   `month count per column ${hist ? hist.months.join('/') : '?'}`);
-const dup = FsHistory.parseFsSheet(histSheet.map(r => r.slice(0, 5)).map((r, i) =>
-  i === 0 || i === 3 ? r : r.map((c, j) => (j === 3 ? (typeof c === 'number' && i > 3 ? histSheet[i][4] : c) : c))));
-ok(dup && dup.dropped >= 1, `dropped ${dup ? dup.dropped : 0} column(s) duplicating the year`);
+const statementRows = parseStatementReport(REPORT_FIXTURE);
+ok(statementRows && statementRows.rows.length === 4, `read ${statementRows ? statementRows.rows.length : 0} accounts, skipping the group-subtotal row`);
+const rev = statementRows && statementRows.rows.find(r => r.code === '4101000');
+ok(rev && rev.closing === -1000, `revenue flipped to raw credit convention (got ${rev ? rev.closing : '?'})`);
+const cogs = statementRows && statementRows.rows.find(r => r.code === '5100000');
+ok(cogs && cogs.closing === 1000, `cost of sales kept as-is, no flip (got ${cogs ? cogs.closing : '?'})`);
+const cash = statementRows && statementRows.rows.find(r => r.code === '1110200');
+ok(cash && cash.closing === 500, `asset kept as-is, no flip (got ${cash ? cash.closing : '?'})`);
+const ap = statementRows && statementRows.rows.find(r => r.code === '2110000');
+ok(ap && ap.closing === -500, `liability flipped to raw credit convention (got ${ap ? ap.closing : '?'})`);
+ok(statementRows && Math.abs(statementRows.rows.reduce((s, r) => s + r.closing, 0)) < 1, 'fixture nets to zero once flipped');
+
+// A sheet with no date-bearing header at all isn't this report — must not
+// be mistaken for one just because it also fails the normal header search.
+ok(parseStatementReport([['just', 'some', 'text'], ['no', 'dates', 'here']]) === null, 'a non-report sheet returns null, not a guess');
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
 process.exit(failures ? 1 : 0);

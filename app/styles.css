@@ -308,21 +308,6 @@ td.stmt-amt.neg{color:var(--bad)}
 .tab-panel.on{display:block}
 .chart-box{position:relative;height:220px}
 .chart-grid .chart-box{height:270px}          /* combo panels carry a legend + axis titles */
-/* Page-level data-source bar */
-.src-bar{display:flex;align-items:center;gap:11px;flex-wrap:wrap;margin-bottom:14px;padding:10px 14px;
-  border:1px solid var(--glass-brd);border-radius:var(--radius-sm);background:var(--glass-strong);
-  box-shadow:inset 0 1px 0 var(--glass-hi);font-size:12.5px;color:var(--muted)}
-.src-bar .lbl{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)}
-.src-bar .val{color:var(--ink)}
-.src-bar .val b{font-weight:700}
-.src-bar .spacer{flex:1}
-.src-bar select{font-size:12px;padding:3px 6px;border:1px solid var(--line-strong);border-radius:7px;background:var(--glass-hi);color:var(--ink)}
-.src-bar label{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
-
-/* Compact segmented control, for the in-panel filters */
-.seg.sm{padding:2px}
-.seg.sm button{padding:4px 9px;font-size:11.5px}
-
 /* Trend table: pin the ratio name so a row of numbers keeps its label */
 table td.pin,table th.pin{position:sticky;left:0;z-index:2;background:var(--glass-strong)}
 table td.nw,table th.nw{white-space:nowrap}

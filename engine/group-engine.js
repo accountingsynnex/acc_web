@@ -22,6 +22,13 @@ function splitLine(line, sep) {
 
 function toNumber(v) {
   if (v == null) return 0;
+  // A cell straight from Excel is already a real number, not something to
+  // clean — round-tripping it through the string cleanup below strips the
+  // "e" out of scientific notation (a formula's floating-point near-zero
+  // residue like 9e-12 turned into 9, a real few-baht error at the exact
+  // scale this reads TB balances at). Only text needs the thousand-
+  // separator/parens/currency-symbol cleanup that follows.
+  if (typeof v === 'number') return isFinite(v) ? v : 0;
   let s = String(v).trim();
   if (!s || s === '-') return 0;
   let neg = false;
@@ -64,6 +71,119 @@ function findHeaderRow(matrix) {
   return 0;
 }
 
+/* Which accounts carry a credit (not debit) balance by nature — the raw
+   signed convention everywhere else in this app (debit +, credit -). Only
+   needed by parseStatementReport below, whose source report states every
+   account at its own natural positive magnitude regardless of debit/credit,
+   so getting an account onto the right side of zero means knowing that
+   nature independently of the sign the report happens to print. Same rule
+   the synthetic sample generator uses (tools/make_sample_tb.py) — code
+   ranges 2/3/4/7 (liabilities, equity, revenue, other income), plus the
+   contra accounts that sit inside an asset section by name (a provision or
+   accumulated depreciation is a credit balance even though its code reads
+   like an asset). */
+const CREDIT_PREFIXES = ['2', '3', '4', '7'];
+const CONTRA_NAME = /PROVISION|ALLOWANCE|ACCUMULAT|DEFERRED INTEREST/i;
+function isCreditNatured(code, name) {
+  return CONTRA_NAME.test(name || '') || CREDIT_PREFIXES.includes(code[0]);
+}
+
+/* Fallback for a sheet that isn't a plain account-list export at all — seen
+   in a real workbook where one entity's "TB" tab held a combined balance
+   sheet + income statement report ("INCOME STATEMENT (SYNNEX FORMAT)")
+   instead, with a subtotal row above every account group and the account's
+   own code sitting beside a plain-language label rather than a header
+   naming a code column. buildRows' normal header search finds nothing to
+   read there, so this reads the layout that report actually has:
+
+     col A: the account code (a subtotal/group row carries a 1-2 digit
+            index here instead, e.g. "1" for "Cash and equivalents" —
+            distinguished from a real code by length, same >=3-digit rule
+            buildRows itself uses for "is this row an account")
+     col B: the account name
+     one column, found from the header block above the data, holds the
+            closing balance as of the report's own date
+
+   The report states every account at its own natural positive magnitude
+   (an asset positive, but ALSO a liability positive, equity positive,
+   revenue positive) rather than this app's raw debit+/credit- convention,
+   so isCreditNatured() above flips exactly the accounts that need it.
+
+   Two eras of this same report were found: one column already IS the
+   closing balance as of the report date; the other splits that date into
+   an "MTD" column and a "YTD" column, and only the YTD one accumulates
+   since the fiscal year start the same way every other TB in this app
+   does — found by a "YTD" label a couple of rows above the date.
+
+   Never trusted blind: the accounts pulled out are summed with the same
+   sign rule applied, and if that sum isn't close to zero — the way a real
+   trial balance's signed closing balances always are — this returns null
+   instead of an import that would look plausible and be wrong. The caller
+   falls through to the ordinary "column not found" error in that case. */
+function parseStatementReport(matrix) {
+  if (!matrix) return null;
+  const scanRows = Math.min(matrix.length, 15);
+
+  // The header row: the one with at least one real date in an early column.
+  // The caller reads with raw:true (no cellDates), so a date-formatted cell
+  // arrives as a plain Excel day-serial number, not a Date object — 25569 is
+  // 1970-01-01, so this window (to ~2064) is date-plausible without also
+  // catching an ordinary monetary figure that happens to be a round number.
+  // More than one column can carry the same date (the MTD/YTD split), so
+  // every match is kept, not just the first.
+  const isDateLike = c => c instanceof Date || (typeof c === 'number' && Number.isInteger(c) && c > 25569 && c < 60000);
+  let dateRow = -1, dateCols = [];
+  for (let r = 0; r < scanRows; r++) {
+    const cells = matrix[r] || [];
+    const hits = [];
+    for (let c = 0; c < Math.min(cells.length, 40); c++) if (isDateLike(cells[c])) hits.push(c);
+    if (hits.length) { dateRow = r; dateCols = hits; break; }
+  }
+  if (dateRow === -1) return null;
+
+  let valueCol = dateCols[0];
+  if (dateCols.length > 1) {
+    // Disambiguate by a "YTD" label a row or two above the date row —
+    // MTD (this period alone) is not what a cumulative TB column means.
+    // Defaults to the last candidate (YTD conventionally follows MTD) if no
+    // such label is found.
+    let ytdCol = null;
+    for (let r = Math.max(0, dateRow - 3); r < dateRow; r++) {
+      const cells = matrix[r] || [];
+      for (const c of dateCols) {
+        if (/ytd/i.test(String(cells[c] == null ? '' : cells[c]))) { ytdCol = c; break; }
+      }
+      if (ytdCol != null) break;
+    }
+    valueCol = ytdCol != null ? ytdCol : dateCols[dateCols.length - 1];
+  }
+
+  const byCode = new Map();
+  for (let r = dateRow + 1; r < matrix.length; r++) {
+    const cells = matrix[r] || [];
+    const raw = cells[0];
+    if (raw == null || typeof raw === 'string') continue;   // a section string ("TOTAL LIABILITIES"), not a code
+    const code = String(Math.round(raw));
+    if (code.length < 3) continue;                          // a group's index number (1, 2, 5, ...), not an account
+    const name = String(cells[1] == null ? '' : cells[1]).trim();
+    const v = toNumber(cells[valueCol]);
+    const closing = isCreditNatured(code, name) ? -v : v;
+    const cur = byCode.get(code);
+    if (cur) cur.closing += closing;
+    else byCode.set(code, { code, name, closing, opening: null });
+  }
+  if (!byCode.size) return null;
+
+  // A real trial balance's signed closing balances net to (near) zero; a
+  // genuinely wrong sign rule misses by roughly twice that account's own
+  // balance — many orders of magnitude past ordinary floating-point drift
+  // summing 300+ values, which this tolerance is sized for instead.
+  const net = [...byCode.values()].reduce((s, x) => s + x.closing, 0);
+  if (Math.abs(net) > 1) return null;   // the sign rule misfired on this layout — don't guess
+
+  return { rows: [...byCode.values()], deptRows: [], columns: null };
+}
+
 function buildRows(matrix) {
   if (!matrix || !matrix.length) return { rows: [], deptRows: [], columns: null };
   const headerRow = findHeaderRow(matrix);
@@ -75,7 +195,11 @@ function buildRows(matrix) {
   const di = findCol(headers, ['debit', 'เดบิต']);
   const cri = findCol(headers, ['credit', 'เครดิต']);
   const dpi = findCol(headers, ['department', 'dept', 'cost center', 'costcentre', 'cost centre', 'แผนก', 'ศูนย์ต้นทุน']);
-  if (ci === -1) throw new Error('ไม่พบคอลัมน์รหัสบัญชี (MainAccount / Account / รหัส)');
+  if (ci === -1) {
+    const fallback = parseStatementReport(matrix);
+    if (fallback) return fallback;
+    throw new Error('ไม่พบคอลัมน์รหัสบัญชี (MainAccount / Account / รหัส)');
+  }
 
   // Aggregate by code: some exports (department/cost-centre-level TBs) repeat
   // the same account code once per department, so this is keyed by code
@@ -220,5 +344,5 @@ function journalEffect(journals) {
   return eff;
 }
 
-const GroupEngine = { parseTB, buildRows, validateTB, applyRulebook, parseJournals, journalEffect, toNumber };
+const GroupEngine = { parseTB, buildRows, validateTB, applyRulebook, parseJournals, journalEffect, toNumber, isCreditNatured, parseStatementReport };
 if (typeof module !== 'undefined') module.exports = GroupEngine;

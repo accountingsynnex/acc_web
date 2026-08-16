@@ -9,11 +9,15 @@
   ];
   let filter = 'all', pendingEntity = null;
   // '' = the live/current period every other page reads. Anything else
-  // targets an archived period's own tb map directly — for uploading a
-  // prior period's TB straight in, instead of loading it as "current" and
-  // archiving a copy. Only Ratios' SET-tab TTM feature reads archived
-  // periods; every other page (Mapping, Journals, Statements, ...) always
-  // reads the live one, so switching this never disturbs the active close.
+  // targets an archived period's own tb (and journals) directly — for
+  // uploading a prior period's whole workbook straight in, instead of
+  // loading it as "current" and archiving a copy. A workbook dropped here
+  // is read exactly the same way as the live close, elimination/AJE sheets
+  // included, so Ratios' trend can show that period's real consolidated
+  // position rather than a raw pre-elimination combine. Only Ratios reads
+  // archived periods at all; every other page (Mapping, Journals,
+  // Statements, ...) always reads the live one, so switching this never
+  // disturbs the active close.
   let activePeriod = '';
 
   const $ = id => document.getElementById(id);
@@ -53,7 +57,10 @@
         const wb = XLSX.read(new Uint8Array(reader.result), {
           type: 'array', cellStyles: false, cellFormula: false, cellHTML: false, cellNF: false, bookVBA: false,
         });
-        const norm = s => String(s).trim().replace(/\s+/g, ' ').toUpperCase();
+        // Hyphens/underscores count as the same separator as a space — the
+        // company's own monthly files vary between "TB SYN" and "TB-SYN"
+        // across different periods' templates.
+        const norm = s => String(s).trim().replace(/[\s_-]+/g, ' ').toUpperCase();
         const wanted = 'TB ' + entityCode.toUpperCase();
         const sheetName = wb.SheetNames.find(n => norm(n) === wanted) || wb.SheetNames[0];
         const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, raw: true, defval: null });
@@ -84,7 +91,7 @@
       return s && String(s.fileName).startsWith(rec.fileName + ' › ');
     });
   }
-  const wbJournals = rec => Store.journals().filter(j => (rec.journalSources || []).includes(j.source));
+  const wbJournals = rec => Store.journals(activePeriod).filter(j => (rec.journalSources || []).includes(j.source));
 
   function renderWorkbook() {
     const drop = $('wbDrop'), rec = Store.workbook(activePeriod);
@@ -112,19 +119,30 @@
   function removeWorkbook() {
     const rec = Store.workbook(activePeriod);
     if (!rec) return;
-    const ents = wbEntities(rec), jc = activePeriod ? 0 : wbJournals(rec).length;
+    const ents = wbEntities(rec), jc = wbJournals(rec).length;
     const what = [`TB ${ents.length} บริษัท`].concat(jc ? [`รายการตัดบัญชี/ปรับปรุง ${jc} journal`] : []).join(' และ ');
     if (!confirm(`เอาไฟล์ "${rec.fileName}" ออก?\n\nจะลบ${what ? ' ' + what : 'ข้อมูล'}ที่นำเข้าจากไฟล์นี้\nผังบัญชีที่จับคู่ไว้ งวดที่บันทึกไว้ และรายการที่คีย์เอง ยังอยู่ครบ`)) return;
     ents.forEach(code => Store.removeTB(code, activePeriod));
-    if (!activePeriod) Store.removeJournalsBySource(rec.journalSources);
+    Store.removeJournalsBySource(rec.journalSources, activePeriod);
     Store.clearWorkbook(activePeriod);
     renderAll();
   }
 
-  // Journal sheets: the elimination workpaper + each entity's adjustment
-  // workpaper. Parsed the same way every month, so re-importing refreshes
-  // them (Store.setJournals merges by id, keeping any enable/disable state).
-  const JOURNAL_SHEETS = ['Eliminate', 'AJE+RJE-Synnex', 'AJE+RJE-SVP', 'AJE+RJE-SWOPMART', 'AJE+RJE-Audit'];
+  // Each entity's adjustment workpaper — named consistently across the
+  // months seen so far. The elimination sheet is not in this list: its own
+  // name varies (see elimSheetName below), so it's found separately.
+  const AJE_SHEETS = ['AJE+RJE-Synnex', 'AJE+RJE-SVP', 'AJE+RJE-SWOPMART', 'AJE+RJE-Audit'];
+
+  // Hyphens/underscores count as the same separator as a space. The
+  // company's own workbook varies this across months/eras — "TB SYN" some
+  // months, "TB-SYN" others — for a sheet that is otherwise identical.
+  const normSheet = s => String(s).trim().replace(/[\s_-]+/g, ' ').toUpperCase();
+
+  // The elimination sheet's name has been "Eliminate", "Elimiate" (a
+  // recurring typo in the company's own template) and "Elimiate + RJE" —
+  // matched by prefix so all three (and whatever the next variant turns
+  // out to be) are found the same way.
+  const findElimSheet = names => names.find(n => /^ELIMI/.test(normSheet(n))) || null;
 
   // Read the whole consolidation workbook: split out each entity's TB sheet
   // and parse the elimination/adjustment journals into double-entry lines.
@@ -142,70 +160,85 @@
       try {
         // Parse only the entity TB + journal sheets and cap rows — the workbook
         // is ~25 MB and TB SYN spans Excel's full 1M-row range, so this keeps
-        // it to ~6s. The department-level TB lives in its own sheet whose name
-        // we can't know up front ("TB SYN_TW" beside "TB SYN"), so read the
-        // sheet names first — bookSheets skips worksheet parsing, so it's
-        // cheap — and add any suffixed variant to the list before the real
-        // read. Without this the department sheet is never parsed at all and
-        // the Cost Center page has nothing to show.
+        // it to ~6s. Sheet names come first — bookSheets skips worksheet
+        // parsing, so it's cheap — so every real name (an entity's TB, its
+        // department-detail variant, the elimination sheet under whatever
+        // its name is this month) is known before the restricted real read,
+        // rather than assumed and then silently unmatched.
         const names = XLSX.read(new Uint8Array(reader.result), { type: 'array', bookSheets: true }).SheetNames || [];
-        const normName = n => String(n).trim().replace(/\s+/g, ' ').toUpperCase();
-        const bases = ENTITIES.map(e => 'TB ' + e.code.toUpperCase());
-        const variants = names.filter(n => {
-          const u = normName(n);
-          return bases.some(base => u !== base && u.startsWith(base) && /^[ _-]/.test(u.slice(base.length)));
-        });
-        const wanted = bases.concat(variants).concat(JOURNAL_SHEETS);
-        const wb = XLSX.read(new Uint8Array(reader.result), {
-          type: 'array', sheets: wanted, sheetRows: 5000,
-          cellStyles: false, cellFormula: false, cellHTML: false, cellNF: false, bookVBA: false,
-        });
-        const norm = s => String(s).trim().replace(/\s+/g, ' ').toUpperCase();
-        const added = [];
-        let deptSheet = '';
+
+        const entitySheet = {};      // entity code -> real sheet name, or null
+        const deptVariant = {};      // entity code -> its "_TW"-style variant, or null
         for (const ent of ENTITIES) {
           const base = 'TB ' + ent.code.toUpperCase();
-          const sheetName = wb.SheetNames.find(n => norm(n) === base);
-          if (!sheetName) continue;
-          const read = n => buildRows(XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: null }));
-          const { rows, deptRows } = read(sheetName);
+          entitySheet[ent.code] = names.find(n => normSheet(n) === base) || null;
           // The department dimension usually lives in its own sheet next to
-          // the entity's TB ("TB SYN_TW" beside "TB SYN"), so also pick up a
-          // suffixed variant. The separator check matters: without it "TB
-          // SYNIN" would look like a variant of "TB SYN".
-          let dept = deptRows, deptSource = deptRows.length ? sheetName : '';
-          if (!dept.length) {
-            const variant = wb.SheetNames.find(n => {
-              const u = norm(n);
-              return u !== base && u.startsWith(base) && /^[ _-]/.test(u.slice(base.length));
-            });
-            if (variant) {
-              const got = read(variant);
-              if (got.deptRows.length) { dept = got.deptRows; deptSource = variant; }
+          // the entity's TB ("TB SYN_TW" beside "TB SYN"). The separator
+          // check on the character right after the base matters — without
+          // it "TB SYNIN" would look like a variant of "TB SYN".
+          deptVariant[ent.code] = names.find(n => {
+            const u = normSheet(n);
+            return u !== base && u.startsWith(base) && / /.test(u[base.length]);
+          }) || null;
+        }
+        const elimSheetName = findElimSheet(names);
+        const ajeSheetNames = AJE_SHEETS.map(sh => names.find(n => normSheet(n) === normSheet(sh))).filter(Boolean);
+        const journalSheetNames = (elimSheetName ? [elimSheetName] : []).concat(ajeSheetNames);
+
+        const wanted = Object.values(entitySheet).filter(Boolean)
+          .concat(Object.values(deptVariant).filter(Boolean))
+          .concat(journalSheetNames);
+        const readOpts = {
+          type: 'array', sheetRows: 5000,
+          cellStyles: false, cellFormula: false, cellHTML: false, cellNF: false, bookVBA: false,
+        };
+        if (wanted.length) readOpts.sheets = wanted;   // restrict only once something was actually found
+        const wb = XLSX.read(new Uint8Array(reader.result), readOpts);
+
+        const added = [], skipped = [];
+        let deptSheet = '';
+        for (const ent of ENTITIES) {
+          const sheetName = entitySheet[ent.code];
+          if (!sheetName) continue;
+          // A company's own sheet is occasionally not a trial balance at all
+          // — seen in a real file where "TB SWOP" held an unrelated income-
+          // statement report for one month. That must not sink the other
+          // three companies or the journals below, so it's isolated here and
+          // reported once at the end instead of aborting the whole import.
+          try {
+            const read = n => buildRows(XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: null }));
+            const { rows, deptRows } = read(sheetName);
+            let dept = deptRows, deptSource = deptRows.length ? sheetName : '';
+            if (!dept.length && deptVariant[ent.code]) {
+              const got = read(deptVariant[ent.code]);
+              if (got.deptRows.length) { dept = got.deptRows; deptSource = deptVariant[ent.code]; }
             }
-          }
-          if (rows.length) {
-            Store.setTB(ent.code, file.name + ' › ' + sheetName, rows, activePeriod, dept, deptSource);
-            added.push(ent.code);
-            if (deptSource && !deptSheet) deptSheet = deptSource;
+            if (rows.length) {
+              Store.setTB(ent.code, file.name + ' › ' + sheetName, rows, activePeriod, dept, deptSource);
+              added.push(ent.code);
+              if (deptSource && !deptSheet) deptSheet = deptSource;
+            } else {
+              skipped.push(`${ent.code} (ชีต "${sheetName}" ไม่มีแถวบัญชี)`);
+            }
+          } catch (e) {
+            skipped.push(`${ent.code} (ชีต "${sheetName}": ${e.message})`);
           }
         }
         if (!added.length) alert('ไม่พบชีต TB รายบริษัท (TB SYN / TB SVP / TB SYNIN / TB SWOP) ในไฟล์นี้');
+        else if (skipped.length) alert(`นำเข้าได้ ${added.length} บริษัท แต่ข้าม: ${skipped.join(', ')}`);
 
-        // Eliminations/adjustments only ever apply to the live period's
-        // consolidation — an archived period is just raw combined figures
-        // for YoY/TTM comparison, so skip journal parsing when uploading
-        // straight into one.
-        if (!activePeriod) {
-          let journals = [];
-          for (const sh of JOURNAL_SHEETS) {
-            const sheetName = wb.SheetNames.find(n => norm(n) === norm(sh));
-            if (!sheetName) continue;
+        // An archived period gets its own Eliminate/AJE sheets read the same
+        // way the live close does — its journals live alongside its tb
+        // (Store.journalsFor), so Ratios' trend can show that period's real
+        // consolidated position instead of a raw pre-elimination combine.
+        let journals = [];
+        for (const sheetName of journalSheetNames) {
+          try {
             const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, raw: true, defval: null });
-            journals = journals.concat(parseJournals(aoa, sh));
-          }
-          Store.setJournals(journals, JOURNAL_SHEETS);
+            journals = journals.concat(parseJournals(aoa, sheetName));
+          } catch (e) { /* one bad journal sheet shouldn't drop the rest */ }
         }
+        Store.setJournals(journals, journalSheetNames, activePeriod);
 
         // Remember the file itself, not just its rows, so the drop zone can
         // report "already imported" on the next visit and undo it in one click.
@@ -215,7 +248,7 @@
             savedAt: new Date().toISOString(),
             entities: added,
             deptSource: deptSheet,
-            journalSources: activePeriod ? [] : JOURNAL_SHEETS,
+            journalSources: journalSheetNames,
           });
         }
       } catch (e) { alert('อ่านไฟล์ Excel ไม่ได้: ' + e.message); }
@@ -313,11 +346,17 @@
       $('calloutTxt').innerHTML = `มี <b>${res.stats.unmapped} รหัสใหม่</b> ที่ระบบยังจัดกลุ่มให้ไม่ได้ เพราะไม่เคยอยู่ใน Rulebook — <a class="linkish" href="mapping.html">จับคู่ให้ครั้งเดียว</a> ระบบจะจดจำไว้ใช้ทุกเดือนถัดไปโดยอัตโนมัติ`;
     } else co.style.display = 'none';
 
-    const jn = $('journalNote'), jc = Store.journals().length;
+    const jn = $('journalNote'), jc = Store.journals(activePeriod).length;
+    // Journals/Statements only ever show the LIVE period, so an archived
+    // period's own journal count is reported here — the one place it's
+    // visible at all — instead of pointing at pages that can't show it.
+    const jDest = activePeriod
+      ? `ใช้คำนวณยอดหลังตัดรายการของ<b>งวดนี้เอง</b>ในหน้า Ratios (ไม่ปรากฏที่หน้า Journals/Statements — หน้านั้นแสดงเฉพาะงวดปัจจุบัน)`
+      : `ดูยอดสุดท้ายที่ <a class="linkish" href="journals.html">Journals</a> หรือ <a class="linkish" href="statements.html">Statements</a>`;
     if (res) {
       jn.style.display = '';
       jn.innerHTML = jc
-        ? `ตารางนี้คือยอด <b>ก่อนตัดรายการ</b> (Combining) — ระบบอ่านรายการตัดบัญชี/ปรับปรุงจากไฟล์แล้ว <b>${jc} journal</b> ดูยอดสุดท้ายที่ <a class="linkish" href="journals.html">Journals</a> หรือ <a class="linkish" href="statements.html">Statements</a>`
+        ? `ตารางนี้คือยอด <b>ก่อนตัดรายการ</b> (Combining) — ระบบอ่านรายการตัดบัญชี/ปรับปรุงจากไฟล์แล้ว <b>${jc} journal</b> ${jDest}`
         : `ตารางนี้คือยอด <b>ก่อนตัดรายการ</b> (Combining) — ยังไม่พบรายการตัดบัญชี/ปรับปรุงในไฟล์นี้ ถ้ามีชีต Eliminate/AJE ให้ลองอัปโหลด Workpaper ทั้งไฟล์อีกครั้ง`;
     } else jn.style.display = 'none';
 
@@ -365,7 +404,7 @@
     const note = $('periodSwitcherNote');
     if (activePeriod) {
       note.style.display = '';
-      note.innerHTML = `⚠ กำลังนำเข้าให้งวด <b>${esc(Store.getPeriod(activePeriod) ? Store.getPeriod(activePeriod).label : activePeriod)}</b> — ใช้แค่เทียบ YoY/TTM ในหน้า Ratios เท่านั้น ไม่กระทบ Mapping/Journals/Statements ของงวดปัจจุบัน`;
+      note.innerHTML = `⚠ กำลังนำเข้าให้งวด <b>${esc(Store.getPeriod(activePeriod) ? Store.getPeriod(activePeriod).label : activePeriod)}</b> — ใช้เทียบเทรนด์ในหน้า Ratios เท่านั้น (อ่านรายการตัดบัญชี/ปรับปรุงของงวดนี้ด้วย ถ้าไฟล์มีชีต Eliminate/AJE) ไม่กระทบ Mapping/Journals/Statements ของงวดปัจจุบัน`;
     } else note.style.display = 'none';
   }
   $('periodSwitcher').onchange = e => {
