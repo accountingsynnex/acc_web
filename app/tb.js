@@ -12,15 +12,19 @@
   const NEW = 'รอจับคู่ (รหัสใหม่)';
 
   const state = { q: '', statement: 'all', status: 'all' };
+  // '' = live; a saved period's key = viewing that archive instead, via the
+  // shared topbar picker (period-picker.js). Read-only page, so this is
+  // always safe to switch.
+  const period = Store.uiPeriod();
 
   // entities in canonical order, only those loaded
-  const ents = () => RULEBOOK.entities.map(e => e.code).filter(c => Store.entitiesLoaded().includes(c));
+  const ents = () => RULEBOOK.entities.map(e => e.code).filter(c => Store.entitiesLoaded(period).includes(c));
 
   // code -> { code, name, byEnt:{ent:bal}, total }
   function perEntity() {
     const map = new Map();
     for (const ent of ents()) {
-      for (const r of Store.tb(ent).rows) {
+      for (const r of Store.tb(ent, period).rows) {
         let o = map.get(r.code);
         if (!o) { o = { code: r.code, name: r.name, byEnt: {}, total: 0 }; map.set(r.code, o); }
         o.byEnt[ent] = (o.byEnt[ent] || 0) + r.closing;
@@ -51,9 +55,9 @@
     });
 
     // tiles
-    const combined = Store.combinedRows();
+    const combined = Store.combinedRows(period ? Store.tbFor(period) : undefined);
     const res = applyRulebook(combined, RULEBOOK, rules);
-    const allBalanced = E.every(e => validateTB(Store.tb(e).rows, 5).balanced);
+    const allBalanced = E.every(e => validateTB(Store.tb(e, period).rows, 5).balanced);
     $('tiles').innerHTML = [
       tile('บัญชีทั้งหมด', accounts.length.toLocaleString(), `รวม ${E.length} บริษัท`),
       tile('จัดกลุ่มอัตโนมัติแล้ว', res.stats.mappedPct + '%', `${res.stats.mapped}/${res.stats.total} รหัส`),

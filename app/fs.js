@@ -12,12 +12,14 @@
   const EQUITY = ['Equity'];
   const PL_ORDER = ['Revenue', 'Cost of Sales', 'Operating Expenses', 'Other Income / Expense', 'Finance Costs', 'Share of Profit', 'Income Tax'];
 
-  function grouped(rows) {
+  function grouped(rows, periodKey) {
     // Default to the final (post-elimination/adjustment) position so every
     // page automatically reflects the true consolidated numbers once
     // journals are loaded; pass rows explicitly (e.g. a single entity's TB)
-    // to bypass that.
-    const combined = rows || Store.finalRows();
+    // to bypass that. periodKey only matters on that default path — it
+    // reads an ARCHIVED period's own final rows instead of the live one, for
+    // pages under the shared period picker (Statements, Cash Flow, ...).
+    const combined = rows || Store.finalRows(periodKey);
     if (!combined.length) return null;
     const res = applyRulebook(combined, RULEBOOK, Store.mappings());
     const secMap = {};                       // section -> { statement, groups:{group:sum} }

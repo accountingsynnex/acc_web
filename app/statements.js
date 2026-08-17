@@ -47,7 +47,9 @@
   }
 
   function render() {
-    const g = FS.grouped();
+    // '' = live; a saved period's key = viewing that archive instead, via
+    // the shared topbar picker (period-picker.js). Read-only page.
+    const g = FS.grouped(null, Store.uiPeriod());
     if (!g) {
       $('banner').innerHTML = '';
       $('stmt').innerHTML = `<tbody><tr><td><div class="results-empty"><div class="big">ยังไม่ได้นำเข้างบทดลอง</div><div class="muted">ไปที่ <a class="linkish" href="import.html">Import TB</a> ก่อน</div></div></td></tr></tbody>`;

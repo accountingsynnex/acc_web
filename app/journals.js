@@ -7,11 +7,23 @@
   const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const money = n => { const a = Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); return n < 0 ? '(' + a + ')' : a; };
   const open = new Set();
+  // '' = live; a saved period's key = viewing/editing that archive's own
+  // journals instead, via the shared topbar picker (period-picker.js).
+  // Every Store journal accessor already takes this as its trailing arg.
+  const period = () => Store.uiPeriod();
 
   const tile = (k, v, s, cls = '') => `<div class="tile ${cls}"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;
 
   function render() {
-    const journals = Store.journals();
+    const pk = period();
+    const periodNote = $('periodNote');
+    if (periodNote) {
+      if (pk) {
+        periodNote.style.display = '';
+        periodNote.innerHTML = `⚠ กำลังดู/แก้ไข journal ของงวดที่บันทึกไว้ <b>${esc((Store.getPeriod(pk) || {}).label || pk)}</b> เท่านั้น — ไม่กระทบ journal ของงวดปัจจุบัน`;
+      } else periodNote.style.display = 'none';
+    }
+    const journals = Store.journals(pk);
     if (!journals.length) {
       $('banner').innerHTML = `<div class="check no"><div class="ico">!</div><div><div class="t">ยังไม่พบรายการตัดบัญชี/ปรับปรุง</div>
         <div class="d">อัปโหลด Workpaper ทั้งไฟล์ (.xlsx) ที่หน้า <a class="linkish" href="import.html">Import TB</a> ให้ระบบอ่านชีต Eliminate/AJE ให้อัตโนมัติ หรือกด "+ เพิ่มรายการเอง" ด้านบนถ้าไฟล์เป็น TB/GL เปล่าๆ</div></div></div>`;
@@ -19,7 +31,7 @@
     }
     $('banner').innerHTML = '';
 
-    const enabled = Store.enabledJournals();
+    const enabled = Store.enabledJournals(pk);
     const totalLines = journals.reduce((s, j) => s + j.lines.length, 0);
     const unbalanced = journals.filter(j => Math.abs(j.net) > 1);
     const netImpact = enabled.reduce((s, j) => s + j.lines.reduce((s2, l) => s2 + Math.abs(l.amount), 0) / 2, 0);
@@ -74,13 +86,13 @@
       const id = el.dataset.toggleon;
       const j = journals.find(x => x.id === id);
       const newState = !(j.enabled !== false);
-      Store.toggleJournal(id, newState);
+      Store.toggleJournal(id, newState, pk);
       render();
     });
     $('list').querySelectorAll('[data-deljn]').forEach(el => el.onclick = e => {
       e.stopPropagation();
       if (!confirm('ลบรายการนี้ออกจากรายการตัดบัญชี/ปรับปรุง?')) return;
-      Store.removeJournal(el.dataset.deljn);
+      Store.removeJournal(el.dataset.deljn, pk);
       render();
     });
     $('list').querySelectorAll('[data-editjn]').forEach(el => el.onclick = e => {
@@ -136,10 +148,10 @@
     if (lines.length < 2) { alert('ต้องมีอย่างน้อย 2 บรรทัด (Dr. และ Cr.)'); return; }
     const net = lines.reduce((s, l) => s + l.amount, 0);
     if (editingId) {
-      Store.updateJournal(editingId, { description, lines, net });
+      Store.updateJournal(editingId, { description, lines, net }, period());
     } else {
       const id = 'manual-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
-      Store.addJournal({ id, description, source: 'บันทึกเอง', lines, net });
+      Store.addJournal({ id, description, source: 'บันทึกเอง', lines, net }, period());
     }
     closeForm();
     render();
@@ -153,13 +165,14 @@
   // Backup / restore. Eliminations only live in this browser's localStorage,
   // so a file is the only way to survive a cleared cache or move machines.
   $('exportBtn').onclick = () => {
-    const list = Store.journals();
+    const pk = period();
+    const list = Store.journals(pk);
     if (!list.length) { alert('ยังไม่มีรายการให้บันทึก'); return; }
-    const blob = new Blob([JSON.stringify(Store.exportJournals(), null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(Store.exportJournals(pk), null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'eliminations-' + new Date().toISOString().slice(0, 10) + '.json';
+    a.download = 'eliminations-' + (pk || new Date().toISOString().slice(0, 10)) + '.json';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
@@ -167,8 +180,10 @@
   $('importInput').onchange = e => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
-    const existing = Store.journals().length;
-    if (existing && !confirm('การโหลดจากไฟล์จะแทนที่รายการเดิมทั้งหมด ' + existing + ' รายการ ต้องการดำเนินการต่อหรือไม่?')) {
+    const pk = period();
+    const existing = Store.journals(pk).length;
+    const whichPeriod = pk ? `งวด ${(Store.getPeriod(pk) || {}).label || pk}` : 'งวดปัจจุบัน';
+    if (existing && !confirm(`การโหลดจากไฟล์จะแทนที่รายการเดิมทั้งหมด ${existing} รายการของ${whichPeriod} ต้องการดำเนินการต่อหรือไม่?`)) {
       e.target.value = '';
       return;
     }
@@ -176,7 +191,7 @@
     reader.onload = () => {
       let n;
       try {
-        n = Store.importJournals(JSON.parse(reader.result));
+        n = Store.importJournals(JSON.parse(reader.result), pk);
       } catch (err) {
         alert('โหลดไฟล์ไม่สำเร็จ: ' + err.message);
         return;

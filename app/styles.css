@@ -143,6 +143,10 @@
   .selectish{display:inline-flex;align-items:center;gap:8px;padding:7px 13px;border-radius:var(--radius-sm);font-weight:600;font-size:13px;
     background:var(--glass-strong);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1px solid var(--glass-brd);box-shadow:inset 0 1px 0 var(--glass-hi)}
   .selectish small{color:var(--faint);font-weight:600}
+  .selectish select{border:none;background:transparent;font:inherit;font-weight:600;color:var(--ink);cursor:pointer;outline:none;max-width:160px}
+  .selectish select:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+  .selectish.viewing-archive{border-color:var(--warn);background:var(--warn-soft)}
+  .selectish.viewing-archive select{color:var(--warn)}
   .iconbtn{width:36px;height:36px;border-radius:var(--radius-sm);display:grid;place-items:center;color:var(--muted);
     background:var(--glass-strong);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1px solid var(--glass-brd);box-shadow:inset 0 1px 0 var(--glass-hi)}
   .iconbtn:hover{color:var(--ink)}

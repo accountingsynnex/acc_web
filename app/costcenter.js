@@ -122,12 +122,19 @@
   }
 
   function render() {
-    if (!Store.hasData()) {
+    // '' = live; a saved period's key = viewing that archive's own
+    // department detail instead, via the shared topbar picker
+    // (period-picker.js). Budget stays a single GLOBAL record either way
+    // (it's an ongoing target, not something any one closed period owns) —
+    // the banner says so when viewing an archive so importing/clearing it
+    // here doesn't look like it only touched this period.
+    const period = Store.uiPeriod();
+    if (!Store.hasData(period)) {
       $('banner').innerHTML = `<div class="check no" style="margin-bottom:14px"><div class="ico">!</div><div><div class="t">ยังไม่ได้นำเข้างบทดลอง</div><div class="d">ไปที่ <a class="linkish" href="import.html">Import TB</a> ก่อน</div></div></div>`;
       $('tiles').innerHTML = ''; $('overrunPanel').style.display = 'none'; $('deptPanel').style.display = 'none';
       return;
     }
-    if (!Store.hasDeptData()) {
+    if (!Store.hasDeptData(period)) {
       $('banner').innerHTML = `<div class="check no" style="margin-bottom:14px"><div class="ico">!</div><div><div class="t">งบทดลองที่นำเข้าไม่มีมิติแผนก</div>
         <div class="d">หน้านี้ต้องใช้ TB ที่มีคอลัมน์ <b>Department</b> (หนึ่งแถวต่อ บัญชี×แผนก) — ไฟล์ที่นำเข้าตอนนี้เป็น TB รวมรายบัญชีอย่างเดียว ลองนำเข้าไฟล์ TB รายแผนกที่หน้า <a class="linkish" href="import.html">Import TB</a></div></div></div>`;
       $('tiles').innerHTML = ''; $('overrunPanel').style.display = 'none'; $('deptPanel').style.display = 'none';
@@ -135,7 +142,7 @@
     }
     $('overrunPanel').style.display = ''; $('deptPanel').style.display = '';
 
-    const { rows, deptNames, sources } = Store.deptRows();
+    const { rows, deptNames, sources } = Store.deptRows(period);
     const budgetRec = Store.budget();
     const bmap = budgetRec && budgetRec.map;
     const expense = rows.filter(r => isExpense(r.code));
@@ -180,11 +187,14 @@
     // sheet from the entity's own TB, and can therefore be a different
     // period than the rest of the app is showing.
     const srcNote = sources && sources.length ? ` — มิติแผนกจากชีต <b>${esc(sources.join(', '))}</b>` : '';
-    $('banner').innerHTML = hasBudget
+    const archiveNote = period
+      ? `<div class="inline-note" style="margin-top:10px">⚠ กำลังดูงวดที่บันทึกไว้ <b>${esc((Store.getPeriod(period) || {}).label || period)}</b> — Budget เป็นค่ากลางใช้ร่วมกันทุกงวด ไม่ได้ผูกกับงวดนี้โดยเฉพาะ นำเข้า/ล้างที่นี่จะกระทบทุกงวดที่ดู</div>`
+      : '';
+    $('banner').innerHTML = (hasBudget
       ? `<div class="check ok" style="margin-bottom:18px"><div class="ico">✓</div><div><div class="t">คำนวณสดจากงบทดลองรายแผนกที่นำเข้า${srcNote}</div>
           <div class="d">Budget จากไฟล์ <b>${esc(budgetRec.fileName)}</b> — <button class="linkish" id="clearBudgetBtn">ล้าง Budget</button></div></div></div>`
       : `<div class="check no" style="margin-bottom:18px"><div class="ico">!</div><div><div class="t">ยังไม่ได้นำเข้า Budget — แสดงเฉพาะ Actual${srcNote}</div>
-          <div class="d">กด <b>นำเข้า Budget</b> ด้านบนขวา แล้วเลือกไฟล์ CSV/Excel ที่มีคอลัมน์ <b>แผนก</b> + <b>งบประมาณ</b> (ใส่คอลัมน์ <b>รหัสบัญชี</b> ด้วยก็ได้ ถ้าอยากเทียบระดับบัญชี)</div></div></div>`;
+          <div class="d">กด <b>นำเข้า Budget</b> ด้านบนขวา แล้วเลือกไฟล์ CSV/Excel ที่มีคอลัมน์ <b>แผนก</b> + <b>งบประมาณ</b> (ใส่คอลัมน์ <b>รหัสบัญชี</b> ด้วยก็ได้ ถ้าอยากเทียบระดับบัญชี)</div></div></div>`) + archiveNote;
     const clearBtn = $('clearBudgetBtn');
     if (clearBtn) clearBtn.onclick = () => { Store.clearBudget(); render(); };
 

@@ -291,22 +291,38 @@ function applyRulebook(rows, rulebook, overrides = {}) {
    [{ id, description, source, lines:[{code, name, amount}], net }]. */
 function parseJournals(matrix, source) {
   if (!matrix || !matrix.length) return [];
-  // locate the header row (has an account-code column and an amount column)
+  // A raw Excel day-serial (no cellDates) or an already-parsed Date — the
+  // same test buildRows/parseStatementReport use to spot a date-headed
+  // column, needed below for one era of the amount column too.
+  const isDateCell = c => c instanceof Date || (typeof c === 'number' && Number.isInteger(c) && c > 25569 && c < 60000);
+  // locate the header row (has an account-code column and an amount column).
+  // The amount column comes in three shapes across the company's own
+  // template history: a single "Dr./ (Cr.)" column (already signed); a
+  // "Current Period" column (also already signed, sitting beside separate
+  // raw Debit/Credit columns from before a sheet was reorganised — matching
+  // "debit" first would silently drop every credit-side line); or, after
+  // that reorganising, that same combined column with no text label at all,
+  // headed by the report date instead. The first of these three found wins,
+  // so a combined column is always preferred over guessing from a split
+  // debit/credit pair.
   let hr = -1, col = {};
   for (let r = 0; r < Math.min(matrix.length, 15); r++) {
-    const cells = (matrix[r] || []).map(x => String(x == null ? '' : x).trim().toLowerCase());
+    const raw = matrix[r] || [];
+    const cells = raw.map(x => String(x == null ? '' : x).trim().toLowerCase());
     const codeI = cells.findIndex(x => x.includes('account code') || x === 'code' || x.includes('รหัส'));
-    const amtI = cells.findIndex(x => x.includes('dr.') || x.includes('dr/') || x.includes('debit') || x.includes('cr.'));
-    if (codeI !== -1 && amtI !== -1) {
-      hr = r;
-      col = {
-        code: codeI, amount: amtI,
-        desc: cells.findIndex(x => x.includes('description') || x.includes('รายการ')),
-        name: cells.findIndex(x => x.includes('name') || x.includes('ชื่อ')),
-        no: cells.findIndex(x => x === 'no.' || x === 'no' || x.includes('เลขที่')),
-      };
-      break;
-    }
+    if (codeI === -1) continue;
+    let amtI = cells.findIndex(x => x.includes('current period'));
+    if (amtI === -1) amtI = raw.findIndex(isDateCell);
+    if (amtI === -1) amtI = cells.findIndex(x => x.includes('dr.') || x.includes('dr/') || x.includes('debit') || x.includes('cr.'));
+    if (amtI === -1) continue;
+    hr = r;
+    col = {
+      code: codeI, amount: amtI,
+      desc: cells.findIndex(x => x.includes('description') || x.includes('รายการ')),
+      name: cells.findIndex(x => x.includes('name') || x.includes('ชื่อ')),
+      no: cells.findIndex(x => x === 'no.' || x === 'no' || x.includes('เลขที่')),
+    };
+    break;
   }
   if (hr === -1) return [];
 

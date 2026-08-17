@@ -43,5 +43,40 @@ ok(Store.journals('2025-07').length === 1 && Store.journals('2025-07')[0].id ===
 Store.addJournal({ id: 'L2', source: 'บันทึกเอง', description: '', lines: [], net: 0 });
 ok(Store.journals('2025-07').length === 1, 'archiving is a one-time snapshot — a later live journal does not retroactively appear in it');
 
+// 5) uiPeriod()/setUiPeriod() — the page-wide "which period am I viewing"
+// selection the shared topbar picker writes to (Statements, Cash Flow,
+// Cost Center, ...). Plain persisted state; '' means live.
+ok(Store.uiPeriod() === '', 'uiPeriod defaults to live (empty string)');
+Store.setUiPeriod('2025-07');
+ok(Store.uiPeriod() === '2025-07', 'setUiPeriod is read back by uiPeriod');
+Store.setUiPeriod('');
+ok(Store.uiPeriod() === '', 'setUiPeriod(\'\') returns to live');
+
+// 6) deptRows/hasDeptData/hasData(periodKey) — Cost Center's department
+// detail, now readable per-period the same way TB itself already was.
+Store.data.tb = { SYN: { fileName: 'live.csv', rows: [{ code: '1110000', name: 'Cash', closing: 1000, opening: null }] } };
+ok(Store.hasData() === true && Store.hasData('2099-01') === false, 'hasData(periodKey) checks that period, not always live');
+ok(Store.hasDeptData() === false, 'live TB above has no department rows yet');
+Store.setTB('SYN', 'live-dept.csv', [{ code: '6100000', name: 'RENT-Sales', closing: 500, opening: null }], '', [{ code: '6100000', name: 'RENT-Sales', dept: 'D1', deptName: 'Sales', closing: 500 }], 'TB SYN_TW');
+Store.setTB('SYN', 'jun-dept.csv', [{ code: '6100000', name: 'RENT-Ops', closing: 200, opening: null }], '2025-06', [{ code: '6100000', name: 'RENT-Ops', dept: 'D2', deptName: 'Ops', closing: 200 }], 'TB SYN_TW');
+ok(Store.hasDeptData() === true, 'hasDeptData(live) true once the live TB carries department rows');
+ok(Store.hasDeptData('2025-06') === true, 'hasDeptData(periodKey) true for that period independently');
+ok(Store.hasDeptData('2025-07') === false, 'a period with no department rows of its own reads false, not the live TB\'s');
+const liveDept = Store.deptRows();
+const juneDept = Store.deptRows('2025-06');
+ok(liveDept.rows.length === 1 && liveDept.rows[0].dept === 'D1', 'deptRows() (live) returns only the live period\'s own department rows');
+ok(juneDept.rows.length === 1 && juneDept.rows[0].dept === 'D2', 'deptRows(periodKey) returns only that period\'s own department rows');
+
+// 7) exportJournals/importJournals(periodKey) — the journals backup/restore
+// buttons, now scoped so restoring into an archived period can't silently
+// wipe or dump the live set instead.
+Store.setJournals([j('E1', 'Eliminate', '3000000', 10)], ['Eliminate'], '2025-06');
+const exported = Store.exportJournals('2025-06');
+ok(exported.journals.length === 1 && exported.journals[0].id === 'E1', 'exportJournals(periodKey) exports that period\'s own journals');
+const beforeLive = Store.journals().length;
+Store.importJournals({ journals: [{ id: 'R1', lines: [{ code: '9999999', amount: 42 }] }] }, '2025-06');
+ok(Store.journals('2025-06').length === 1 && Store.journals('2025-06')[0].id === 'R1', 'importJournals(payload, periodKey) replaces that period\'s own journals');
+ok(Store.journals().length === beforeLive, 'importJournals into a period leaves the live journal set untouched');
+
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
 process.exit(failures ? 1 : 0);

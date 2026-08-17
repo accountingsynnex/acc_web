@@ -32,14 +32,28 @@
 
   const tile = (k, v, s, cls = '') => `<div class="tile ${cls}"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;
 
+  // '' = live; a saved period's key = viewing that archive's own codes
+  // instead, via the shared topbar picker (period-picker.js). The mapping
+  // OVERRIDES saved below always stay global — one chart of accounts for
+  // every period, by design (the page's own copy already says so) — only
+  // which codes show up as "new" here changes with the period.
+  const period = () => Store.uiPeriod();
+
   function currentUnmapped() {
-    const rows = Store.combinedRows();
+    const pk = period();
+    const rows = Store.combinedRows(pk ? Store.tbFor(pk) : undefined);
     if (!rows.length) return null;
     return applyRulebook(rows, RULEBOOK, Store.mappings());
   }
 
   function render() {
     TAX = taxonomy();   // pick up any group just created
+    const pk = period();
+    const note = $('periodNote');
+    if (pk) {
+      note.style.display = '';
+      note.innerHTML = `⚠ กำลังดูรหัสของงวดที่บันทึกไว้ <b>${esc((Store.getPeriod(pk) || {}).label || pk)}</b> — แต่การจับคู่ที่บันทึกจากหน้านี้ยังคง<b>มีผลกับทุกงวด</b> (รวมงวดปัจจุบันด้วย) ไม่ใช่แค่งวดนี้`;
+    } else note.style.display = 'none';
     const res = currentUnmapped();
 
     if (!res) {
@@ -155,7 +169,7 @@
         const statement = stSel.value, section = seSel.value;
         const group = card.querySelector('.m-gr').value.trim();
         if (!group) { card.querySelector('.m-gr').focus(); return; }
-        const row = Store.combinedRows().find(r => r.code === code);
+        const row = Store.combinedRows(period() ? Store.tbFor(period()) : undefined).find(r => r.code === code);
         Store.setMapping(code, { name: row ? row.name : '', statement, section, group });
         editOpen.delete(code);
         render();
@@ -296,7 +310,7 @@
         const statement = stSel.value, section = seSel.value;
         const group = card.querySelector('.m-gr').value.trim();
         if (!group) { card.querySelector('.m-gr').focus(); return; }
-        const row = Store.combinedRows().find(r => r.code === code);
+        const row = Store.combinedRows(period() ? Store.tbFor(period()) : undefined).find(r => r.code === code);
         Store.setMapping(code, { name: row ? row.name : '', statement, section, group });
         render();  // this code leaves the unmapped list; taxonomy may gain a new group next render
       };

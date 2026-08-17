@@ -75,6 +75,99 @@
     return { archived: true, year, key, period: Store.getPeriod(key) };
   }
 
+  // ---- Real trailing-12-months + cross-period averaging, matching the
+  // company's own Cash Cycle sheet exactly (Synnex KPI/SET/Taiwan columns)
+  // instead of the single-file approximation above — needs several months'
+  // worth of saved periods to exist, which the batch-upload workflow makes
+  // realistic to have. Every helper here returns null rather than an
+  // estimate when a period it needs isn't archived, so computeTabMetrics
+  // can tell the difference between "computed the real formula" and
+  // "fell back to the approximation" instead of silently mixing the two.
+  function shiftMonthKey(key, delta) {
+    const m = /^(\d{4})-(\d{2})$/.exec(String(key || ''));
+    if (!m) return null;
+    const idx = (+m[1]) * 12 + (+m[2] - 1) + delta;
+    return `${Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, '0')}`;
+  }
+  function plAt(key) {
+    const rows = key ? Store.finalRows(key) : null;
+    const g = rows && rows.length ? FS.grouped(rows) : null;
+    return g ? FS.buildPL(g) : null;
+  }
+  function bsAt(key) {
+    const rows = key ? Store.finalRows(key) : null;
+    const g = rows && rows.length ? FS.grouped(rows) : null;
+    return g ? FS.buildBS(g) : null;
+  }
+  function balanceAt(key, arrName, sectionName, groupName) {
+    const bs = bsAt(key);
+    if (!bs) return null;
+    const s = bs[arrName].find(x => x.name === sectionName);
+    if (!s) return null;
+    const gr = s.groups.find(x => x.group === groupName);
+    return gr ? gr.value : 0;
+  }
+  // A period's P&L reads cumulative since the fiscal year start, so its OWN
+  // month is that figure minus the same field the month before it — except
+  // January, whose YTD already IS just its own month (nothing to subtract).
+  function monthlyFlow(key, field) {
+    const m = /^\d{4}-(\d{2})$/.exec(String(key || ''));
+    if (!m) return null;
+    const pl = plAt(key);
+    if (!pl) return null;
+    if (+m[1] === 1) return pl[field];
+    const prevPl = plAt(shiftMonthKey(key, -1));
+    return prevPl ? pl[field] - prevPl[field] : null;
+  }
+  // n consecutive months' own flow ending at asOfKey, summed from
+  // individual monthly flows rather than one file's YTD figure scaled up.
+  // Null the moment any one of those months can't be decomposed (not
+  // archived, or — for the window's earliest month, when it isn't itself a
+  // January — the month right before it isn't archived either).
+  function sumFlow(asOfKey, field, n) {
+    let sum = 0;
+    for (let i = 0; i < n; i++) {
+      const f = monthlyFlow(shiftMonthKey(asOfKey, -i), field);
+      if (f == null) return null;
+      sum += f;
+    }
+    return sum;
+  }
+  // Trailing 12 months — the denominator Synnex KPI/SET's real formula uses
+  // (revenue/COGS "12 เดือนล่าสุด").
+  const ttmFlow = (asOfKey, field) => sumFlow(asOfKey, field, 12);
+  // Just the resolved quarter's own 3 months — the denominator Taiwan's
+  // real formula uses instead ("Average Revenue Jan-Mar × 12").
+  const quarterFlow = (asOfKey, field) => sumFlow(asOfKey, field, 3);
+  // Synnex KPI's own averaging: this quarter-end's balance + the SAME
+  // month one year ago, ÷2. Needs that year-ago period archived too.
+  function thAveraging(key) {
+    const yearAgo = shiftMonthKey(key, -12);
+    const avg2 = (a, s, g) => {
+      const v1 = balanceAt(key, a, s, g), v0 = balanceAt(yearAgo, a, s, g);
+      return v0 == null ? null : (v1 + v0) / 2;
+    };
+    const ar = avg2('assets', 'Current Assets', 'Trade receivables');
+    const inv = avg2('assets', 'Current Assets', 'Inventories');
+    const ap = avg2('liab', 'Current Liabilities', 'Trade payable');
+    return (ar == null || inv == null || ap == null) ? null : { ar, inv, ap };
+  }
+  // Taiwan's own averaging: the 3 individual month-end balances inside THIS
+  // quarter itself (e.g. Jan+Feb+Mar), not a chain against a neighbouring
+  // quarter or the file's own opening-balance column.
+  function twAveraging(key) {
+    const keys = [key, shiftMonthKey(key, -1), shiftMonthKey(key, -2)];
+    const avg3 = (a, s, g) => {
+      const vs = keys.map(k => balanceAt(k, a, s, g));
+      return vs.some(v => v == null) ? null : vs.reduce((t, v) => t + v, 0) / vs.length;
+    };
+    const ar = avg3('assets', 'Current Assets', 'Trade receivables');
+    const inv = avg3('assets', 'Current Assets', 'Inventories');
+    const ap = avg3('liab', 'Current Liabilities', 'Trade payable');
+    const varr = avg3('assets', 'Current Assets', 'Rebate receivables');
+    return (ar == null || inv == null || ap == null) ? null : { ar, inv, ap, var: varr };
+  }
+
   // The single ordered ratio list shared by all 3 tabs — group label, a
   // stable key (used by computeTabMetrics, the trend table and the trend
   // charts), the display label and its unit. Adding/removing a ratio here
@@ -173,24 +266,36 @@
 
     if (tab === 'th') {
       const months = ctx.periodMonths || 3;
-      // "Synnex KPI" (the company's own cash-cycle comparison chart) divides
-      // by revenue/COGS over the trailing 12 months. The selected quarter
-      // says how many months of flow the imported P&L carries, so the same
-      // shape falls out of the file itself: ending balance ÷ flow-to-date
-      // × the days those months represent. It differs from a true trailing
-      // 12 months when the year is seasonal, which the card says outright.
-      const days = 365 * months / 12, cogsAbs = Math.abs(mpl.cogs);
-      const arDays = mpl.revenue ? grossAR / mpl.revenue * days : null;
-      const invDays = cogsAbs ? inventory / cogsAbs * days : null;
-      const apDays = cogsAbs ? tradeAP / cogsAbs * days : null;
-      const note = `(งบ ${ctx.periodLabel || ''} = ${months} เดือนสะสม — ผัง Synnex KPI จริงใช้ยอดเฉลี่ยเทียบงวดเดียวกันปีก่อน ÷ รายได้ 12 เดือนล่าสุด)`;
-      const arF = `ลูกหนี้การค้า ${M(grossAR)} ÷ รายได้ × ${days.toFixed(2)} วัน ${note}`;
-      const invF = `สินค้าคงเหลือ ${M(inventory)} ÷ ต้นทุนขาย × ${days.toFixed(2)} วัน ${note}`;
-      const apF = `เจ้าหนี้การค้า ${M(tradeAP)} ÷ ต้นทุนขาย × ${days.toFixed(2)} วัน ${note}`;
+      // "Synnex KPI" (the company's own cash-cycle comparison chart): the
+      // REAL formula divides average AR/Inventory/AP (this quarter-end +
+      // the same month a year ago, ÷2) by revenue/COGS over a genuine
+      // trailing 12 months — both need several months of saved periods to
+      // compute exactly (ctx.thAvg, ctx.ttm from render()); short of that,
+      // this falls back to ending balance ÷ this file's own YTD flow
+      // scaled up by month count, same as before either existed.
+      const cogsAbs = Math.abs(mpl.cogs);
+      const hasTTM = ctx.ttm && ctx.ttm.revenue != null && ctx.ttm.cogs != null;
+      const revenueBasis = hasTTM ? ctx.ttm.revenue : mpl.revenue;
+      const cogsBasis = hasTTM ? Math.abs(ctx.ttm.cogs) : cogsAbs;
+      const days = hasTTM ? 365 : 365 * months / 12;
+      const thAvg = ctx.thAvg;
+      const arBase = thAvg ? thAvg.ar : grossAR, invBase = thAvg ? thAvg.inv : inventory, apBase = thAvg ? thAvg.ap : tradeAP;
+      const arDays = revenueBasis ? arBase / revenueBasis * days : null;
+      const invDays = cogsBasis ? invBase / cogsBasis * days : null;
+      const apDays = cogsBasis ? apBase / cogsBasis * days : null;
+      const missing = [];
+      if (!hasTTM) missing.push(`รายได้/ต้นทุนขาย 12 เดือนล่าสุดจริง (ใช้ยอดสะสม ${months} เดือนของงบ ${ctx.periodLabel || ''} × ${(12 / months).toFixed(2)} แทน)`);
+      if (!thAvg) missing.push('งวดเดียวกันปีก่อนสำหรับหาค่าเฉลี่ย (ใช้ยอดปลายงวดแทน)');
+      const note = missing.length
+        ? `⚠ ยังไม่ตรงสูตร Synnex KPI 100% เพราะยังไม่มี: ${missing.join(' และ ')}`
+        : '✓ ตรงกับสูตร Synnex KPI จริง (เฉลี่ยเทียบงวดเดียวกันปีก่อน ÷ รายได้/ต้นทุนขาย 12 เดือนล่าสุดจริง)';
+      const arF = `${thAvg ? 'ลูกหนี้การค้าเฉลี่ย' : 'ลูกหนี้การค้า'} ${M(arBase)} ÷ รายได้ × ${days.toFixed(2)} วัน (${note})`;
+      const invF = `${thAvg ? 'สินค้าคงเหลือเฉลี่ย' : 'สินค้าคงเหลือ'} ${M(invBase)} ÷ ต้นทุนขาย × ${days.toFixed(2)} วัน (${note})`;
+      const apF = `${thAvg ? 'เจ้าหนี้การค้าเฉลี่ย' : 'เจ้าหนี้การค้า'} ${M(apBase)} ÷ ต้นทุนขาย × ${days.toFixed(2)} วัน (${note})`;
       return {
-        arDays: { value: arDays, formula: arF, base: grossAR },
-        invDays: { value: invDays, formula: invF, base: inventory },
-        apDays: { value: apDays, formula: apF, base: tradeAP },
+        arDays: { value: arDays, formula: arF, base: arBase },
+        invDays: { value: invDays, formula: invF, base: invBase },
+        apDays: { value: apDays, formula: apF, base: apBase },
         ccc: { value: (arDays != null && invDays != null && apDays != null) ? arDays + invDays - apDays : null, formula: 'AR Days + Inventory Days − AP Days' },
         currentRatio: { value: currentRatio, formula: 'สินทรัพย์หมุนเวียน ÷ หนี้สินหมุนเวียน ✓ ตรงกับสูตร Conso จริง' },
         quickRatio: { value: CL ? (CA - inventory) / CL : null, formula: '(สินทรัพย์หมุนเวียน − สินค้าคงเหลือ) ÷ หนี้สินหมุนเวียน ✓ ตรงกับสูตร Conso จริง' },
@@ -208,26 +313,45 @@
 
     if (tab === 'tw') {
       const months = ctx.periodMonths || 3;
+      // Taiwan's own real basis is narrower than Synnex KPI/SET's trailing
+      // 12 months: "Average Revenue Jan-Mar × 12" — the CURRENT quarter's
+      // own 3 months, averaged then annualised, not the YTD-since-fiscal-
+      // year flow scaled up (those only agree at Q1, where YTD IS the
+      // quarter). ctx.twFlow carries that quarter's own decomposed 3-month
+      // revenue/COGS from render(); short of it, this still falls back to
+      // the old YTD×(12/months) approximation, which is the same figure at
+      // Q1 and only drifts from the real one at Q2-Q4 if the business is
+      // seasonal enough that no one quarter looks like the year average.
       const cogsAbs = Math.abs(mpl.cogs);
-      const dayMultiplier = 365 * months / 12;
-      const arDays = mpl.revenue ? avgAR / mpl.revenue * dayMultiplier : null;
-      const invDays = cogsAbs ? avgInv / cogsAbs * dayMultiplier : null;
-      const apDays = cogsAbs ? avgAP / cogsAbs * dayMultiplier : null;
+      const hasTwFlow = ctx.twFlow && ctx.twFlow.revenue != null && ctx.twFlow.cogs != null;
+      const annualRevenue = hasTwFlow ? ctx.twFlow.revenue * 4 : mpl.revenue * (12 / months);
+      const annualCogs = hasTwFlow ? Math.abs(ctx.twFlow.cogs) * 4 : cogsAbs * (12 / months);
+      const twAvg = ctx.twAvg;
+      const arBase = twAvg ? twAvg.ar : avgAR, invBase = twAvg ? twAvg.inv : avgInv, apBase = twAvg ? twAvg.ap : avgAP;
+      const arDays = annualRevenue ? arBase / annualRevenue * 365 : null;
+      const invDays = annualCogs ? invBase / annualCogs * 365 : null;
+      const apDays = annualCogs ? apBase / annualCogs * 365 : null;
       // AR Vendor Days (vendor rebate receivable, "VAR") — real, Taiwan-only
       // metric per the company's own comparison chart (blank for Synnex
       // KPI/SET) — folds into Taiwan's own Cash Conversion Cycle total too,
       // same as the Capital Turn calc under NROIC below.
       const grossVAR = groupIn(mbs.assets, 'Current Assets', 'Rebate receivables');
       const avgVAR = avgOf(grossVAR, prevBs ? groupIn(prevBs.assets, 'Current Assets', 'Rebate receivables') : null);
-      const arVendorDays = mpl.revenue ? avgVAR / mpl.revenue * dayMultiplier : null;
+      const varBase = twAvg && twAvg.var != null ? twAvg.var : avgVAR;
+      const arVendorDays = annualRevenue ? varBase / annualRevenue * 365 : null;
       const ccc = [arDays, invDays, apDays, arVendorDays].every(v => v != null) ? arDays + invDays - apDays + arVendorDays : null;
       const avgNote = ctx.avgNote || '';
-      const pNote = `(งบ ${ctx.periodLabel || ''} = ${months} เดือนสะสม)`;
+      const missing = [];
+      if (!hasTwFlow) missing.push('รายได้/ต้นทุนขาย 3 เดือนของไตรมาสนี้แยกจากยอดสะสม (ใช้ยอดสะสมทั้งปี÷เดือนแทน)');
+      if (!twAvg) missing.push('ยอดปลายงวดครบ 3 เดือนในไตรมาสนี้ (ใช้ค่าเฉลี่ยแบบอื่นแทน)');
+      const pNote = missing.length
+        ? `⚠ ยังไม่ตรงสูตร PAR/NROIC 100% เพราะยังไม่มี: ${missing.join(' และ ')}`
+        : `✓ ตรงกับสูตร PAR/NROIC จริง (เฉลี่ย 3 เดือนในไตรมาส ${ctx.periodLabel || ''})`;
       return {
-        arDays: { base: avgAR, value: arDays, formula: `ลูกหนี้การค้าเฉลี่ย ${M(avgAR)} ÷ รายได้ × ${dayMultiplier.toFixed(2)} วัน ✓ สูตรจริงจาก PAR/NROIC ${pNote}` },
-        arVendorDays: { base: avgVAR, value: arVendorDays, formula: `ลูกหนี้เคลม vendor เฉลี่ย ${M(avgVAR)} ÷ รายได้ × ${dayMultiplier.toFixed(2)} วัน ✓ สูตรจริงจาก PAR/NROIC ${pNote}` },
-        invDays: { base: avgInv, value: invDays, formula: `สินค้าคงเหลือเฉลี่ย ${M(avgInv)} ÷ ต้นทุนขาย × ${dayMultiplier.toFixed(2)} วัน ✓ สูตรจริงจาก PAR/NROIC ${pNote}` },
-        apDays: { base: avgAP, value: apDays, formula: `เจ้าหนี้การค้าเฉลี่ย ${M(avgAP)} ÷ ต้นทุนขาย × ${dayMultiplier.toFixed(2)} วัน ✓ สูตรจริงจาก PAR/NROIC ${pNote}` },
+        arDays: { base: arBase, value: arDays, formula: `ลูกหนี้การค้าเฉลี่ย ${M(arBase)} ÷ รายได้ (รายปี) × 365 วัน (${pNote})` },
+        arVendorDays: { base: varBase, value: arVendorDays, formula: `ลูกหนี้เคลม vendor เฉลี่ย ${M(varBase)} ÷ รายได้ (รายปี) × 365 วัน (${pNote})` },
+        invDays: { base: invBase, value: invDays, formula: `สินค้าคงเหลือเฉลี่ย ${M(invBase)} ÷ ต้นทุนขาย (รายปี) × 365 วัน (${pNote})` },
+        apDays: { base: apBase, value: apDays, formula: `เจ้าหนี้การค้าเฉลี่ย ${M(apBase)} ÷ ต้นทุนขาย (รายปี) × 365 วัน (${pNote})` },
         ccc: { value: ccc, formula: 'AR Days + AR Vendor Days + Inventory Days − AP Days (ค่าเฉลี่ยต้นงวด+ปลายงวด แทนยอดปลายงวดล้วน)' },
         currentRatio: { value: currentRatio, formula: 'สินทรัพย์หมุนเวียน ÷ หนี้สินหมุนเวียน (เหมือนวิธีบริษัท — ชีท KPI ใช้สูตรเดียวกัน)' },
         quickRatio: { value: CL ? (CA - inventory - prepayment) / CL : null, formula: `(สินทรัพย์หมุนเวียน − สินค้าคงเหลือ − เงินจ่ายล่วงหน้า ${M(prepayment)}) ÷ หนี้สินหมุนเวียน ✓ สูตรจริงจากชีท KPI` },
@@ -251,11 +375,17 @@
     const ytdNote = ctx.ytdNote || '';
     const avgNote = ctx.avgNote || '';
     const monthsSet = ctx.periodMonths || 3;
-    const daysSet = 365 * monthsSet / 12, cogsAbsSet = Math.abs(mpl.cogs);
-    const arDays = mpl.revenue ? (grossAR + otherReceivable) / mpl.revenue * daysSet : null;
-    const invDays = cogsAbsSet ? inventory / cogsAbsSet * daysSet : null;
-    const apDays = cogsAbsSet ? tradeAP / cogsAbsSet * daysSet : null;
-    const noteSet = `(ยอดปลายงวด, งบ ${ctx.periodLabel || ''} = ${monthsSet} เดือนสะสม — SET จริงใช้รายได้/ต้นทุนขาย 12 เดือนล่าสุด)`;
+    const cogsAbsSet = Math.abs(mpl.cogs);
+    const hasTTMSet = ctx.ttm && ctx.ttm.revenue != null && ctx.ttm.cogs != null;
+    const revenueBasisSet = hasTTMSet ? ctx.ttm.revenue : mpl.revenue;
+    const cogsBasisSet = hasTTMSet ? Math.abs(ctx.ttm.cogs) : cogsAbsSet;
+    const daysSet = hasTTMSet ? 365 : 365 * monthsSet / 12;
+    const arDays = revenueBasisSet ? (grossAR + otherReceivable) / revenueBasisSet * daysSet : null;
+    const invDays = cogsBasisSet ? inventory / cogsBasisSet * daysSet : null;
+    const apDays = cogsBasisSet ? tradeAP / cogsBasisSet * daysSet : null;
+    const noteSet = hasTTMSet
+      ? `(ยอดปลายงวด ÷ รายได้/ต้นทุนขาย 12 เดือนล่าสุดจริง ✓ ตรงกับสูตร SET จริง)`
+      : `(ยอดปลายงวด, งบ ${ctx.periodLabel || ''} = ${monthsSet} เดือนสะสม × ${(12 / monthsSet).toFixed(2)} — ⚠ ยังไม่มีงวดย้อนหลังครบ 12 เดือนจริง ใช้ยอดสะสมสเกลแทน)`;
     const arF = `ลูกหนี้การค้า + ลูกหนี้อื่น ${M(grossAR + otherReceivable)} ÷ รายได้ × ${daysSet.toFixed(2)} วัน ${noteSet}`;
     const invF = `สินค้าคงเหลือ ${M(inventory)} ÷ ต้นทุนขาย × ${daysSet.toFixed(2)} วัน ${noteSet}`;
     const apF = `เจ้าหนี้การค้า ${M(tradeAP)} ÷ ต้นทุนขาย × ${daysSet.toFixed(2)} วัน ${noteSet}`;
@@ -466,9 +596,14 @@
         if (pg) {
           const openingBS = openingBSOf(q.key);
           const periodMonths = monthsFromKey(q.key) || periodOpt().months;
+          const ttmRevenue = ttmFlow(q.key, 'revenue'), ttmCogs = ttmFlow(q.key, 'cogs');
+          const qRevenue = quarterFlow(q.key, 'revenue'), qCogs = quarterFlow(q.key, 'cogs');
           cards = {
             bs: FS.buildBS(pg), pl: FS.buildPL(pg), openingBS, avgNote: avgNoteFor(openingBS),
             periodMonths, periodLabel: `${periodOpt().label} · ${q.period.label}`,
+            ttm: (ttmRevenue != null && ttmCogs != null) ? { revenue: ttmRevenue, cogs: ttmCogs } : null,
+            twFlow: (qRevenue != null && qCogs != null) ? { revenue: qRevenue, cogs: qCogs } : null,
+            thAvg: thAveraging(q.key), twAvg: twAveraging(q.key),
           };
         }
       }
@@ -495,13 +630,13 @@
       // show (other saved periods and/or the live TB) even though THIS
       // quarter's own cards don't.
     } else {
-      const { bs, pl, openingBS, avgNote, periodMonths, periodLabel } = cards;
+      const { bs, pl, openingBS, avgNote, periodMonths, periodLabel, ttm, twFlow, thAvg, twAvg } = cards;
       const annualizeFactor = 12 / periodMonths;
       const ytdNote = annualizeFactor > 1 ? ` × annualize ${annualizeFactor.toFixed(2)} (${periodMonths} เดือน→12)` : '';
 
-      renderTabCards('th', computeTabMetrics('th', bs, pl, null, { periodMonths, periodLabel }));
-      renderTabCards('tw', computeTabMetrics('tw', bs, pl, openingBS, { periodMonths, periodLabel, avgNote }));
-      renderTabCards('set', computeTabMetrics('set', bs, pl, openingBS, { annualizeFactor, ytdNote, avgNote, periodMonths, periodLabel }));
+      renderTabCards('th', computeTabMetrics('th', bs, pl, null, { periodMonths, periodLabel, ttm, thAvg }));
+      renderTabCards('tw', computeTabMetrics('tw', bs, pl, openingBS, { periodMonths, periodLabel, avgNote, twFlow, twAvg }));
+      renderTabCards('set', computeTabMetrics('set', bs, pl, openingBS, { annualizeFactor, ytdNote, avgNote, periodMonths, periodLabel, ttm }));
       $('banner').innerHTML = `<div class="check ok" style="margin-bottom:14px"><div class="ico">✓</div><div><div class="t">${q.archived ? `คำนวณจากงวดที่บันทึกไว้ <b>${esc(q.period.label)}</b>` : 'คำนวณจากงบที่โรลอัปสด'}</div>
         <div class="d">DSCR และ LT Debt/EBITDA ต้องใช้ตารางกระแสเงินสด/เงินกู้ — ดูหน้า <a class="linkish" href="cashflow.html">Cash Flow</a></div></div></div>`;
     }

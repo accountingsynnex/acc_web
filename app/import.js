@@ -174,11 +174,21 @@
   // months, "TB-SYN" others — for a sheet that is otherwise identical.
   const normSheet = s => String(s).trim().replace(/[\s_-]+/g, ' ').toUpperCase();
 
+  // An entity's own sheet name follows its CODE (below) for every entity
+  // except when the entity itself was legally renamed — SYNIN's TB sheet is
+  // "TB-INFINIT" from the month it became "Infinit Partners Co.,Ltd."
+  // onward, same company and account codes, just a new name over the same
+  // Store entity code so its history keeps lining up under one code.
+  const ENTITY_SHEET_ALIASES = { SYNIN: ['INFINIT'] };
+
   // The elimination sheet's name has been "Eliminate", "Elimiate" (a
   // recurring typo in the company's own template) and "Elimiate + RJE" —
-  // matched by prefix so all three (and whatever the next variant turns
-  // out to be) are found the same way.
-  const findElimSheet = names => names.find(n => /^ELIMI/.test(normSheet(n))) || null;
+  // matched by prefix so all three (and whatever the next variant turns out
+  // to be) are found the same way — or, in an older era of the template,
+  // "RECORD" (its journal entries sit there instead, one sheet for every
+  // entity's eliminations/adjustments rather than split across "Eliminate"
+  // + several "AJE+RJE-*" sheets).
+  const findElimSheet = names => names.find(n => /^ELIMI/.test(normSheet(n)) || normSheet(n) === 'RECORD') || null;
 
   // Read the whole consolidation workbook: split out each entity's TB sheet
   // and parse the elimination/adjustment journals into double-entry lines.
@@ -211,15 +221,15 @@
         const entitySheet = {};      // entity code -> real sheet name, or null
         const deptVariant = {};      // entity code -> its "_TW"-style variant, or null
         for (const ent of ENTITIES) {
-          const base = 'TB ' + ent.code.toUpperCase();
-          entitySheet[ent.code] = names.find(n => normSheet(n) === base) || null;
+          const bases = ['TB ' + ent.code.toUpperCase()].concat((ENTITY_SHEET_ALIASES[ent.code] || []).map(a => 'TB ' + a));
+          entitySheet[ent.code] = names.find(n => bases.includes(normSheet(n))) || null;
           // The department dimension usually lives in its own sheet next to
           // the entity's TB ("TB SYN_TW" beside "TB SYN"). The separator
           // check on the character right after the base matters — without
           // it "TB SYNIN" would look like a variant of "TB SYN".
           deptVariant[ent.code] = names.find(n => {
             const u = normSheet(n);
-            return u !== base && u.startsWith(base) && / /.test(u[base.length]);
+            return !bases.includes(u) && bases.some(b => u.startsWith(b) && / /.test(u[b.length]));
           }) || null;
         }
         const elimSheetName = findElimSheet(names);
@@ -240,7 +250,7 @@
         let deptSheet = '';
         for (const ent of ENTITIES) {
           const sheetName = entitySheet[ent.code];
-          if (!sheetName) continue;
+          if (!sheetName) { skipped.push(`${ent.code} (ไม่พบชีต TB ในไฟล์นี้)`); continue; }
           // A company's own sheet is occasionally not a trial balance at all
           // — seen in a real file where "TB SWOP" held an unrelated income-
           // statement report for one month. That must not sink the other

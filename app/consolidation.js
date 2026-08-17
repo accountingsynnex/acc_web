@@ -19,17 +19,20 @@
   }
 
   function render() {
-    const E = RULEBOOK.entities.map(e => e.code).filter(c => Store.entitiesLoaded().includes(c));
+    // '' = live; a saved period's key = viewing that archive instead, via
+    // the shared topbar picker (period-picker.js). Read-only page.
+    const period = Store.uiPeriod();
+    const E = RULEBOOK.entities.map(e => e.code).filter(c => Store.entitiesLoaded(period).includes(c));
     if (!E.length) {
       $('banner').innerHTML = '';
       $('matrix').innerHTML = `<tbody><tr><td><div class="results-empty"><div class="big">ยังไม่ได้นำเข้างบทดลอง</div><div class="muted">ไปที่ <a class="linkish" href="import.html">Import TB</a> ก่อน</div></div></td></tr></tbody>`;
       return;
     }
-    const cols = E.map(ent => ({ ent, sum: summary(Store.tb(ent).rows) }));
-    const combining = summary(Store.combinedRows());   // before journals
-    const final = summary(Store.finalRows());          // after journals — the true consolidated position
+    const cols = E.map(ent => ({ ent, sum: summary(Store.tb(ent, period).rows) }));
+    const combining = summary(Store.combinedRows(period ? Store.tbFor(period) : undefined));   // before journals
+    const final = summary(Store.finalRows(period));          // after journals — the true consolidated position
     const lineNames = Object.keys(combining);
-    const journals = Store.journals(), enabled = Store.enabledJournals();
+    const journals = Store.journals(period), enabled = Store.enabledJournals(period);
 
     let h = `<thead><tr><th>รายการ</th>${E.map(e => `<th class="ent">${esc(e)}</th>`).join('')}<th class="ent total-col">รวม (Combining)</th><th class="ent">ตัดรายการ/ปรับปรุง</th><th class="ent total-col">สุดท้าย (Final)</th></tr></thead><tbody>`;
     for (const name of lineNames) {

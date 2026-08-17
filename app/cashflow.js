@@ -15,13 +15,16 @@
   function rows(list) { return list.map(r => line(r.label, r.value, 1)).join(''); }
 
   function render() {
-    const g = FS.grouped();
+    // '' = live; a saved period's key = viewing that archive instead, via
+    // the shared topbar picker (period-picker.js). Read-only page.
+    const period = Store.uiPeriod();
+    const g = FS.grouped(null, period);
     if (!g) {
       $('banner').innerHTML = `<div class="check no" style="margin-bottom:14px"><div class="ico">!</div><div><div class="t">ยังไม่ได้นำเข้างบทดลอง</div><div class="d">ไปที่ <a class="linkish" href="import.html">Import TB</a> ก่อน</div></div></div>`;
       $('cf').innerHTML = '';
       return;
     }
-    const openingRows = Store.openingRows();
+    const openingRows = Store.openingRows(period);
     if (!openingRows) {
       $('banner').innerHTML = `<div class="check no" style="margin-bottom:14px"><div class="ico">!</div><div><div class="t">ไฟล์ที่นำเข้าไม่มีคอลัมน์ยอดยกมา (Opening balance)</div><div class="d">งบกระแสเงินสดต้องเทียบกับยอดต้นงวด — นำเข้าไฟล์ที่มีคอลัมน์นี้ก่อน (เช่น TB รายเดือนจากไฟล์ R9.3)</div></div></div>`;
       $('cf').innerHTML = '';
