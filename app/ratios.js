@@ -133,6 +133,11 @@
     invGross: [[AS, CUR, 'Inventories']],
     invAllow: [[AS, CUR, 'Allowance for obsolete inventory']],
     apTrade: [[LI, CLB, 'Trade payable']],
+    // เจ้าหนี้หมุนเวียนอื่น + ค่าใช้จ่ายค้างจ่าย as the published statement
+    // states them. Vendor reserve is part of เจ้าหนี้หมุนเวียนอื่น there, but
+    // the PAR reports it on its own line and leaves it OUT of the payable
+    // it measures AP Days against — hence the separate entry.
+    apVendorReserve: [[LI, CLB, 'Vendor reserve']],
     apOther: [[LI, CLB, 'Other payable'], [LI, CLB, 'Deposit received'], [LI, CLB, 'ค่าใช้จ่ายค้างจ่าย']],
     prepaid: [[AS, CUR, 'เงินจ่ายล่วงหน้าค่าสินค้า']],
     vendorAR: [[AS, CUR, 'Rebate receivables']],
@@ -142,8 +147,13 @@
   BASE.arTh = BASE.arNetCur.concat(BASE.arNonCur);       // Synnex KPI
   BASE.arSet = BASE.arNetCur.concat(BASE.otherRecv);     // SET
   BASE.arTw = BASE.arNetCur.concat(neg(BASE.arAllow));   // Taiwan — gross
-  BASE.apSet = BASE.apTrade.concat(BASE.apOther);
-  BASE.apTw = BASE.apTrade.concat(neg(BASE.prepaid));
+  BASE.apSet = BASE.apTrade.concat(BASE.apOther, BASE.apVendorReserve);
+  // The PAR's own "Notes & Accounts payable": trade payable together with
+  // เจ้าหนี้หมุนเวียนอื่น but WITHOUT the vendor reserve it lists separately,
+  // then net of prepayments for purchases ("AP-Prepaid").
+  BASE.apTw = BASE.apTrade
+    .concat([[LI, CLB, 'Other payable'], [LI, CLB, 'Deposit received']])
+    .concat(neg(BASE.prepaid));
 
   function sumSpec(bs, spec) {
     if (!bs) return null;
@@ -405,7 +415,7 @@
         arDays: { base: arBase, value: arDays, formula: `ลูกหนี้การค้าเฉลี่ย (ก่อนหักค่าเผื่อฯ) ${M(arBase)} ÷ รายได้ (รายปี) × 365 วัน (${pNote})` },
         arVendorDays: { base: varBase, value: arVendorDays, formula: `ลูกหนี้เคลม vendor เฉลี่ย ${M(varBase)} ÷ รายได้ (รายปี) × 365 วัน (${pNote})` },
         invDays: { base: invBase, value: invDays, formula: `สินค้าคงเหลือเฉลี่ย (ก่อนหักค่าเผื่อฯ) ${M(invBase)} ÷ ต้นทุนขาย (รายปี) × 365 วัน (${pNote})` },
-        apDays: { base: apBase, value: apDays, formula: `(เจ้าหนี้การค้า − เงินจ่ายล่วงหน้าค่าสินค้า) เฉลี่ย ${M(apBase)} ÷ ต้นทุนขาย (รายปี) × 365 วัน (${pNote})` },
+        apDays: { base: apBase, value: apDays, formula: `(เจ้าหนี้การค้า + เจ้าหนี้หมุนเวียนอื่น − สำรอง vendor − เงินจ่ายล่วงหน้าค่าสินค้า) เฉลี่ย ${M(apBase)} ÷ ต้นทุนขาย (รายปี) × 365 วัน (${pNote})` },
         ccc: { value: ccc, formula: 'AR Days + AR Vendor Days + Inventory Days − AP Days (เฉลี่ยต้นเดือน+ปลายเดือน แทนยอดปลายงวดล้วน)' },
         currentRatio: { value: currentRatio, formula: 'สินทรัพย์หมุนเวียน ÷ หนี้สินหมุนเวียน (เหมือนวิธีบริษัท — ชีท KPI ใช้สูตรเดียวกัน)' },
         quickRatio: { value: CL ? (CA - inventory - prepayment) / CL : null, formula: `(สินทรัพย์หมุนเวียน − สินค้าคงเหลือ − เงินจ่ายล่วงหน้า ${M(prepayment)}) ÷ หนี้สินหมุนเวียน ✓ สูตรจริงจากชีท KPI` },
