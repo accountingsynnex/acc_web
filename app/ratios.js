@@ -99,13 +99,63 @@
     const g = rows && rows.length ? FS.grouped(rows) : null;
     return g ? FS.buildBS(g) : null;
   }
-  function balanceAt(key, arrName, sectionName, groupName) {
-    const bs = bsAt(key);
+  /* ---- What each column actually measures ------------------------------
+     The three columns don't just average differently — they measure
+     DIFFERENT balances, each copied from the source that column comes from:
+
+       Synnex KPI — the published consolidated balance sheet: ลูกหนี้การค้า
+                    (net of the credit-loss allowance) plus its non-current
+                    portion, สินค้าคงเหลือ net of the obsolescence allowance,
+                    เจ้าหนี้การค้า.
+       SET        — the same published lines, but AR read together with
+                    ลูกหนี้หมุนเวียนอื่น and AP with เจ้าหนี้หมุนเวียนอื่น +
+                    ค่าใช้จ่ายค้างจ่าย.
+       Taiwan     — the Synnex Thai PAR workbook (ARINV / Factor(locked)):
+                    AR and inventory GROSS, i.e. before those same two
+                    allowances, and payables net of prepayments for
+                    purchases (its "AP-Prepaid" line).
+
+     A base is the list of this app's own grouping names that has to add up
+     to one of those published lines, each optionally signed. A group the
+     chart of accounts doesn't have simply contributes nothing, so a
+     different company's mapping still computes rather than breaking. */
+  const AS = 'assets', LI = 'liab', CUR = 'Current Assets', NCUR = 'Non-current Assets', CLB = 'Current Liabilities';
+  const neg = spec => spec.map(([a, s, g]) => [a, s, g, -1]);
+  const BASE = {
+    // ลูกหนี้การค้า (หมุนเวียน) — the allowance is a credit-natured contra
+    // account inside Current Assets, so adding it here is what nets it off.
+    arNetCur: [[AS, CUR, 'Trade receivables'], [AS, CUR, 'Account receivable - other company'],
+               [AS, CUR, 'Allowance for doubful debt'], [AS, CUR, 'Notes receivables']],
+    arNonCur: [[AS, NCUR, 'ลูกหนี้การค้า']],
+    arAllow: [[AS, CUR, 'Allowance for doubful debt']],
+    otherRecv: [[AS, CUR, 'Other receivable'], [AS, CUR, 'Rebate receivables'], [AS, CUR, 'Prepayment'],
+                [AS, CUR, 'Prepayment - VAT'], [AS, CUR, 'Provision for other receivable']],
+    invGross: [[AS, CUR, 'Inventories']],
+    invAllow: [[AS, CUR, 'Allowance for obsolete inventory']],
+    apTrade: [[LI, CLB, 'Trade payable']],
+    apOther: [[LI, CLB, 'Other payable'], [LI, CLB, 'Deposit received'], [LI, CLB, 'ค่าใช้จ่ายค้างจ่าย']],
+    prepaid: [[AS, CUR, 'เงินจ่ายล่วงหน้าค่าสินค้า']],
+    vendorAR: [[AS, CUR, 'Rebate receivables']],
+  };
+  // The composed bases each tab reads, in the same order as above.
+  BASE.invNet = BASE.invGross.concat(BASE.invAllow);
+  BASE.arTh = BASE.arNetCur.concat(BASE.arNonCur);       // Synnex KPI
+  BASE.arSet = BASE.arNetCur.concat(BASE.otherRecv);     // SET
+  BASE.arTw = BASE.arNetCur.concat(neg(BASE.arAllow));   // Taiwan — gross
+  BASE.apSet = BASE.apTrade.concat(BASE.apOther);
+  BASE.apTw = BASE.apTrade.concat(neg(BASE.prepaid));
+
+  function sumSpec(bs, spec) {
     if (!bs) return null;
-    const s = bs[arrName].find(x => x.name === sectionName);
-    if (!s) return null;
-    const gr = s.groups.find(x => x.group === groupName);
-    return gr ? gr.value : 0;
+    let total = 0;
+    for (const [arrName, sectionName, groupName, sign] of spec) {
+      const arr = bs[arrName];
+      const s = arr && arr.find(x => x.name === sectionName);
+      if (!s) continue;
+      const gr = s.groups.find(x => x.group === groupName);
+      if (gr) total += (sign || 1) * gr.value;
+    }
+    return total;
   }
   // A period's P&L reads cumulative since the fiscal year start, so its OWN
   // month is that figure minus the same field the month before it — except
@@ -143,29 +193,25 @@
   // month one year ago, ÷2. Needs that year-ago period archived too.
   function thAveraging(key) {
     const yearAgo = shiftMonthKey(key, -12);
-    const avg2 = (a, s, g) => {
-      const v1 = balanceAt(key, a, s, g), v0 = balanceAt(yearAgo, a, s, g);
-      return v0 == null ? null : (v1 + v0) / 2;
-    };
-    const ar = avg2('assets', 'Current Assets', 'Trade receivables');
-    const inv = avg2('assets', 'Current Assets', 'Inventories');
-    const ap = avg2('liab', 'Current Liabilities', 'Trade payable');
-    return (ar == null || inv == null || ap == null) ? null : { ar, inv, ap };
+    const now = bsAt(key), then = bsAt(yearAgo);
+    if (!now || !then) return null;
+    const avg2 = spec => (sumSpec(now, spec) + sumSpec(then, spec)) / 2;
+    return { ar: avg2(BASE.arTh), inv: avg2(BASE.invNet), ap: avg2(BASE.apTrade) };
   }
-  // Taiwan's own averaging: the 3 individual month-end balances inside THIS
-  // quarter itself (e.g. Jan+Feb+Mar), not a chain against a neighbouring
-  // quarter or the file's own opening-balance column.
+  // Taiwan's own averaging (Synnex Thai PAR, sheet "Factor(locked)"): each
+  // month contributes its OWN (opening + closing) / 2, and the quarter is
+  // the average of those three — so the month before the quarter is part of
+  // it too, and Q1 works out to (Dec + 2·Jan + 2·Feb + Mar) / 6 rather than
+  // the plain average of three month-ends. Needs 4 consecutive periods.
   function twAveraging(key) {
-    const keys = [key, shiftMonthKey(key, -1), shiftMonthKey(key, -2)];
-    const avg3 = (a, s, g) => {
-      const vs = keys.map(k => balanceAt(k, a, s, g));
-      return vs.some(v => v == null) ? null : vs.reduce((t, v) => t + v, 0) / vs.length;
+    const bss = [-3, -2, -1, 0].map(d => bsAt(shiftMonthKey(key, d)));
+    if (bss.some(b => !b)) return null;
+    const avg = spec => {
+      let total = 0;
+      for (let i = 1; i < bss.length; i++) total += (sumSpec(bss[i - 1], spec) + sumSpec(bss[i], spec)) / 2;
+      return total / (bss.length - 1);
     };
-    const ar = avg3('assets', 'Current Assets', 'Trade receivables');
-    const inv = avg3('assets', 'Current Assets', 'Inventories');
-    const ap = avg3('liab', 'Current Liabilities', 'Trade payable');
-    const varr = avg3('assets', 'Current Assets', 'Rebate receivables');
-    return (ar == null || inv == null || ap == null) ? null : { ar, inv, ap, var: varr };
+    return { ar: avg(BASE.arTw), inv: avg(BASE.invGross), ap: avg(BASE.apTw), var: avg(BASE.vendorAR) };
   }
 
   // The single ordered ratio list shared by all 3 tabs — group label, a
@@ -236,11 +282,14 @@
     const groupIn = (arr, name, grp) => { const s = arr.find(x => x.name === name); if (!s) return 0; const gr = s.groups.find(x => x.group === grp); return gr ? gr.value : 0; };
 
     const CA = secTot(mbs.assets, 'Current Assets'), CL = secTot(mbs.liab, 'Current Liabilities');
-    const inventory = groupIn(mbs.assets, 'Current Assets', 'Inventories');
+    // Inventory nets the obsolescence allowance off, matching the published
+    // สินค้าคงเหลือ line — Current Assets already carries that allowance, so
+    // the quick ratio below has to subtract the net figure, not the gross.
+    const inventory = sumSpec(mbs, BASE.invNet);
     const equity = mbs.totalEquity + mbs.netProfit, debt = mbs.totalLiab;
-    const grossAR = groupIn(mbs.assets, 'Current Assets', 'Trade receivables');
-    const tradeAP = groupIn(mbs.liab, 'Current Liabilities', 'Trade payable');
-    const otherReceivable = groupIn(mbs.assets, 'Current Assets', 'Other receivable');
+    const arNetCur = sumSpec(mbs, BASE.arNetCur);
+    const tradeAP = sumSpec(mbs, BASE.apTrade);
+    const otherReceivable = sumSpec(mbs, BASE.otherRecv);
     const cashEquiv = groupIn(mbs.assets, 'Current Assets', 'Cash in Hand')
       + groupIn(mbs.assets, 'Current Assets', 'Cash at Bank - current account')
       + groupIn(mbs.assets, 'Current Assets', 'Cash at Bank - saving accounts')
@@ -250,9 +299,7 @@
     const ebit = mpl.revenue + mpl.cogs + mpl.opEx + mpl.otherIE + mpl.share;
 
     const avgOf = (curV, prevV) => prevV != null ? (curV + prevV) / 2 : curV;
-    const avgAR = avgOf(grossAR, prevBs ? groupIn(prevBs.assets, 'Current Assets', 'Trade receivables') : null);
-    const avgInv = avgOf(inventory, prevBs ? groupIn(prevBs.assets, 'Current Assets', 'Inventories') : null);
-    const avgAP = avgOf(tradeAP, prevBs ? groupIn(prevBs.liab, 'Current Liabilities', 'Trade payable') : null);
+    const avgSpec = spec => avgOf(sumSpec(mbs, spec), prevBs ? sumSpec(prevBs, spec) : null);
     const avgAssets = avgOf(mbs.totalAssets, prevBs ? prevBs.totalAssets : null);
     const avgEquity = avgOf(equity, prevBs ? (prevBs.totalEquity + prevBs.netProfit) : null);
 
@@ -279,7 +326,11 @@
       const cogsBasis = hasTTM ? Math.abs(ctx.ttm.cogs) : cogsAbs;
       const days = hasTTM ? 365 : 365 * months / 12;
       const thAvg = ctx.thAvg;
-      const arBase = thAvg ? thAvg.ar : grossAR, invBase = thAvg ? thAvg.inv : inventory, apBase = thAvg ? thAvg.ap : tradeAP;
+      // AR here is the published ลูกหนี้การค้า INCLUDING its non-current
+      // portion — the comparison chart's own "AR Mar 26" reads that way,
+      // and the SET column beside it reads the current portion only.
+      const arBase = thAvg ? thAvg.ar : sumSpec(mbs, BASE.arTh),
+        invBase = thAvg ? thAvg.inv : inventory, apBase = thAvg ? thAvg.ap : tradeAP;
       const arDays = revenueBasis ? arBase / revenueBasis * days : null;
       const invDays = cogsBasis ? invBase / cogsBasis * days : null;
       const apDays = cogsBasis ? apBase / cogsBasis * days : null;
@@ -327,7 +378,12 @@
       const annualRevenue = hasTwFlow ? ctx.twFlow.revenue * 4 : mpl.revenue * (12 / months);
       const annualCogs = hasTwFlow ? Math.abs(ctx.twFlow.cogs) * 4 : cogsAbs * (12 / months);
       const twAvg = ctx.twAvg;
-      const arBase = twAvg ? twAvg.ar : avgAR, invBase = twAvg ? twAvg.inv : avgInv, apBase = twAvg ? twAvg.ap : avgAP;
+      // Taiwan reads AR and inventory GROSS (before the credit-loss and
+      // obsolescence allowances the published statements net off) and
+      // payables net of prepayments for purchases — its "AP-Prepaid" line.
+      const arBase = twAvg ? twAvg.ar : avgSpec(BASE.arTw),
+        invBase = twAvg ? twAvg.inv : avgSpec(BASE.invGross),
+        apBase = twAvg ? twAvg.ap : avgSpec(BASE.apTw);
       const arDays = annualRevenue ? arBase / annualRevenue * 365 : null;
       const invDays = annualCogs ? invBase / annualCogs * 365 : null;
       const apDays = annualCogs ? apBase / annualCogs * 365 : null;
@@ -335,24 +391,22 @@
       // metric per the company's own comparison chart (blank for Synnex
       // KPI/SET) — folds into Taiwan's own Cash Conversion Cycle total too,
       // same as the Capital Turn calc under NROIC below.
-      const grossVAR = groupIn(mbs.assets, 'Current Assets', 'Rebate receivables');
-      const avgVAR = avgOf(grossVAR, prevBs ? groupIn(prevBs.assets, 'Current Assets', 'Rebate receivables') : null);
-      const varBase = twAvg && twAvg.var != null ? twAvg.var : avgVAR;
+      const varBase = twAvg && twAvg.var != null ? twAvg.var : avgSpec(BASE.vendorAR);
       const arVendorDays = annualRevenue ? varBase / annualRevenue * 365 : null;
       const ccc = [arDays, invDays, apDays, arVendorDays].every(v => v != null) ? arDays + invDays - apDays + arVendorDays : null;
       const avgNote = ctx.avgNote || '';
       const missing = [];
       if (!hasTwFlow) missing.push('รายได้/ต้นทุนขาย 3 เดือนของไตรมาสนี้แยกจากยอดสะสม (ใช้ยอดสะสมทั้งปี÷เดือนแทน)');
-      if (!twAvg) missing.push('ยอดปลายงวดครบ 3 เดือนในไตรมาสนี้ (ใช้ค่าเฉลี่ยแบบอื่นแทน)');
+      if (!twAvg) missing.push('งวดก่อนไตรมาสนี้ 1 เดือน (สูตรไต้หวันเฉลี่ยต้นเดือน+ปลายเดือนของทั้ง 3 เดือน จึงต้องมีเดือนก่อนหน้าด้วย)');
       const pNote = missing.length
         ? `⚠ ยังไม่ตรงสูตร PAR/NROIC 100% เพราะยังไม่มี: ${missing.join(' และ ')}`
-        : `✓ ตรงกับสูตร PAR/NROIC จริง (เฉลี่ย 3 เดือนในไตรมาส ${ctx.periodLabel || ''})`;
+        : `✓ ตรงกับสูตร PAR/NROIC จริง (เฉลี่ยต้นเดือน+ปลายเดือน ทั้ง 3 เดือนในไตรมาส ${ctx.periodLabel || ''})`;
       return {
-        arDays: { base: arBase, value: arDays, formula: `ลูกหนี้การค้าเฉลี่ย ${M(arBase)} ÷ รายได้ (รายปี) × 365 วัน (${pNote})` },
+        arDays: { base: arBase, value: arDays, formula: `ลูกหนี้การค้าเฉลี่ย (ก่อนหักค่าเผื่อฯ) ${M(arBase)} ÷ รายได้ (รายปี) × 365 วัน (${pNote})` },
         arVendorDays: { base: varBase, value: arVendorDays, formula: `ลูกหนี้เคลม vendor เฉลี่ย ${M(varBase)} ÷ รายได้ (รายปี) × 365 วัน (${pNote})` },
-        invDays: { base: invBase, value: invDays, formula: `สินค้าคงเหลือเฉลี่ย ${M(invBase)} ÷ ต้นทุนขาย (รายปี) × 365 วัน (${pNote})` },
-        apDays: { base: apBase, value: apDays, formula: `เจ้าหนี้การค้าเฉลี่ย ${M(apBase)} ÷ ต้นทุนขาย (รายปี) × 365 วัน (${pNote})` },
-        ccc: { value: ccc, formula: 'AR Days + AR Vendor Days + Inventory Days − AP Days (ค่าเฉลี่ยต้นงวด+ปลายงวด แทนยอดปลายงวดล้วน)' },
+        invDays: { base: invBase, value: invDays, formula: `สินค้าคงเหลือเฉลี่ย (ก่อนหักค่าเผื่อฯ) ${M(invBase)} ÷ ต้นทุนขาย (รายปี) × 365 วัน (${pNote})` },
+        apDays: { base: apBase, value: apDays, formula: `(เจ้าหนี้การค้า − เงินจ่ายล่วงหน้าค่าสินค้า) เฉลี่ย ${M(apBase)} ÷ ต้นทุนขาย (รายปี) × 365 วัน (${pNote})` },
+        ccc: { value: ccc, formula: 'AR Days + AR Vendor Days + Inventory Days − AP Days (เฉลี่ยต้นเดือน+ปลายเดือน แทนยอดปลายงวดล้วน)' },
         currentRatio: { value: currentRatio, formula: 'สินทรัพย์หมุนเวียน ÷ หนี้สินหมุนเวียน (เหมือนวิธีบริษัท — ชีท KPI ใช้สูตรเดียวกัน)' },
         quickRatio: { value: CL ? (CA - inventory - prepayment) / CL : null, formula: `(สินทรัพย์หมุนเวียน − สินค้าคงเหลือ − เงินจ่ายล่วงหน้า ${M(prepayment)}) ÷ หนี้สินหมุนเวียน ✓ สูตรจริงจากชีท KPI` },
         cashRatio: { value: cashRatio, formula: `เงินสด + เงินฝากธนาคาร ${M(cashEquiv)} ÷ หนี้สินหมุนเวียน (เหมือนวิธีบริษัท)` },
@@ -380,19 +434,24 @@
     const revenueBasisSet = hasTTMSet ? ctx.ttm.revenue : mpl.revenue;
     const cogsBasisSet = hasTTMSet ? Math.abs(ctx.ttm.cogs) : cogsAbsSet;
     const daysSet = hasTTMSet ? 365 : 365 * monthsSet / 12;
-    const arDays = revenueBasisSet ? (grossAR + otherReceivable) / revenueBasisSet * daysSet : null;
+    // AR pairs the published ลูกหนี้การค้า (current portion, net) with
+    // ลูกหนี้หมุนเวียนอื่น; AP pairs เจ้าหนี้การค้า with เจ้าหนี้หมุนเวียนอื่น
+    // and ค่าใช้จ่ายค้างจ่าย, the mirror of it on the other side.
+    const arSet = arNetCur + otherReceivable;
+    const apSet = sumSpec(mbs, BASE.apSet);
+    const arDays = revenueBasisSet ? arSet / revenueBasisSet * daysSet : null;
     const invDays = cogsBasisSet ? inventory / cogsBasisSet * daysSet : null;
-    const apDays = cogsBasisSet ? tradeAP / cogsBasisSet * daysSet : null;
+    const apDays = cogsBasisSet ? apSet / cogsBasisSet * daysSet : null;
     const noteSet = hasTTMSet
       ? `(ยอดปลายงวด ÷ รายได้/ต้นทุนขาย 12 เดือนล่าสุดจริง ✓ ตรงกับสูตร SET จริง)`
       : `(ยอดปลายงวด, งบ ${ctx.periodLabel || ''} = ${monthsSet} เดือนสะสม × ${(12 / monthsSet).toFixed(2)} — ⚠ ยังไม่มีงวดย้อนหลังครบ 12 เดือนจริง ใช้ยอดสะสมสเกลแทน)`;
-    const arF = `ลูกหนี้การค้า + ลูกหนี้อื่น ${M(grossAR + otherReceivable)} ÷ รายได้ × ${daysSet.toFixed(2)} วัน ${noteSet}`;
+    const arF = `ลูกหนี้การค้า + ลูกหนี้หมุนเวียนอื่น ${M(arSet)} ÷ รายได้ × ${daysSet.toFixed(2)} วัน ${noteSet}`;
     const invF = `สินค้าคงเหลือ ${M(inventory)} ÷ ต้นทุนขาย × ${daysSet.toFixed(2)} วัน ${noteSet}`;
-    const apF = `เจ้าหนี้การค้า ${M(tradeAP)} ÷ ต้นทุนขาย × ${daysSet.toFixed(2)} วัน ${noteSet}`;
+    const apF = `เจ้าหนี้การค้า + เจ้าหนี้หมุนเวียนอื่น + ค่าใช้จ่ายค้างจ่าย ${M(apSet)} ÷ ต้นทุนขาย × ${daysSet.toFixed(2)} วัน ${noteSet}`;
     return {
-      arDays: { value: arDays, formula: arF, base: grossAR + otherReceivable },
+      arDays: { value: arDays, formula: arF, base: arSet },
       invDays: { value: invDays, formula: invF, base: inventory },
-      apDays: { value: apDays, formula: apF, base: tradeAP },
+      apDays: { value: apDays, formula: apF, base: apSet },
       ccc: { value: (arDays != null && invDays != null && apDays != null) ? arDays + invDays - apDays : null, formula: 'AR Days + Inventory Days − AP Days' },
       currentRatio: { value: currentRatio, formula: 'สินทรัพย์หมุนเวียน ÷ หนี้สินหมุนเวียน (เหมือนวิธีบริษัท)' },
       quickRatio: { value: CL ? (CA - inventory) / CL : null, formula: '(สินทรัพย์หมุนเวียน − สินค้าคงเหลือ) ÷ หนี้สินหมุนเวียน (เหมือนวิธีบริษัท)' },
