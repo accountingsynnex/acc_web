@@ -492,16 +492,36 @@
     if (activePeriod) renderPeriods();   // uploading into an archived period changes its company count below
   }
 
+  const MB = b => (b / 1048576).toFixed(2) + ' MB';
+
+  /* What the workspace is taking, and what to delete to get it back. Shown
+     because the store fills silently otherwise: the browser gives no warning
+     until a write fails, and by then an import has already stopped halfway. */
+  function renderUsage() {
+    const u = Store.usage();
+    const pct = Math.min(100, 100 * u.bytes / u.limit);
+    const state = pct > 90 ? 'bad' : pct > 70 ? 'warn' : 'ok';
+    $('usageBar').innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;margin-bottom:7px">
+        <b>ใช้ไป ${MB(u.bytes)}</b><span class="muted">จากประมาณ ${MB(u.limit)} · ${pct.toFixed(0)}%</span>
+      </div>
+      <div class="usage-track"><span class="${state}" style="width:${pct.toFixed(1)}%"></span></div>
+      ${pct > 90 ? '<div class="inline-note" style="margin-top:10px">⚠ เกือบเต็มแล้ว — นำเข้าเพิ่มอาจไม่สำเร็จ ลบงวดที่ไม่ได้ใช้ออกก่อน</div>' : ''}`;
+  }
+
   function renderPeriods() {
     const periods = Store.listPeriods();
+    renderUsage();
     if (!periods.length) {
       $('periodsTbl').innerHTML = `<tbody><tr><td class="muted" style="padding:14px 16px">ยังไม่มีงวดที่บันทึกไว้</td></tr></tbody>`;
       return;
     }
-    $('periodsTbl').innerHTML = `<thead><tr><th>รหัสงวด</th><th>ชื่องวด</th><th>บันทึกเมื่อ</th><th>บริษัท</th><th></th></tr></thead>
+    const sizes = Store.usage().periods;
+    $('periodsTbl').innerHTML = `<thead><tr><th>รหัสงวด</th><th>ชื่องวด</th><th>บันทึกเมื่อ</th><th>บริษัท</th><th class="r">ขนาด</th><th></th></tr></thead>
       <tbody>${periods.map(p => `<tr><td class="code">${esc(p.key)}</td><td>${esc(p.label)}</td>
         <td class="muted">${new Date(p.savedAt).toLocaleString('th-TH')}</td>
         <td class="muted">${Object.keys(p.tb).length} บริษัท</td>
+        <td class="r muted">${MB(sizes[p.key] || 0)}</td>
         <td><button class="remove" data-period-remove="${esc(p.key)}" title="ลบงวดนี้">✕</button></td></tr>`).join('')}</tbody>`;
     $('periodsTbl').querySelectorAll('[data-period-remove]').forEach(b => b.onclick = () => {
       const key = b.dataset.periodRemove;
@@ -511,6 +531,17 @@
       renderPeriods(); renderPeriodSwitcher(); renderAll();
     });
   }
+
+  $('clearAllBtn').onclick = () => {
+    const u = Store.usage();
+    if (!confirm(`ล้างข้อมูลทั้งหมดในเบราว์เซอร์นี้ (${MB(u.bytes)})?\n\n`
+      + `จะหายทั้งหมด: งบทดลองงวดปัจจุบัน · งวดที่บันทึกไว้ ${Store.listPeriods().length} งวด · รายการตัดบัญชี · ผังบัญชีที่แก้เอง · Budget\n\n`
+      + 'กู้คืนไม่ได้ — ถ้ายังไม่ได้สำรองรายการตัดบัญชี/ผังบัญชีเป็นไฟล์ ให้กดยกเลิกแล้วไปสำรองก่อน')) return;
+    if (!confirm('ยืนยันอีกครั้ง — ล้างทุกอย่างเลยใช่ไหม?')) return;
+    Store.clearAll();
+    activePeriod = '';
+    location.reload();
+  };
 
   $('archiveBtn').onclick = () => {
     const key = $('periodKey').value.trim(), label = $('periodLabel').value.trim();

@@ -40,6 +40,28 @@
       }
     },
 
+    /* How much of the browser's store this workspace is taking, so the
+       Import page can show it before a write fails rather than after.
+       `limit` is the usual ~5 MB cap — not readable from the browser, so it
+       stands as the figure the bar is drawn against. */
+    usage() {
+      let bytes = 0;
+      try { bytes = (localStorage.getItem(KEY) || '').length; } catch (e) { /* ignore */ }
+      const periods = {};
+      for (const [key, p] of Object.entries(this.data.periods || {})) periods[key] = JSON.stringify(p).length;
+      return { bytes, limit: 5 * 1024 * 1024, live: JSON.stringify(this.data.tb || {}).length, periods };
+    },
+
+    /* Everything this workspace holds, gone: trial balances, saved periods,
+       journals, chart-of-accounts overrides, budget. Nothing ships with the
+       app, so this really is back to a first visit — the caller warns. */
+    clearAll() {
+      try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
+      this.data = { tb: {}, mappings: {} };
+      this.storageFull = false;
+      this.load();
+    },
+
     // Which period the read-only report pages (TB, Consolidation,
     // Statements, Cash Flow, Cost Center, Review) and Journals/Mapping's
     // own views are currently showing — '' is the live period, the same
