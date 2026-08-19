@@ -24,11 +24,6 @@
   // switcher change) starting mid-loop would race it and write a file into
   // the wrong period.
   let batchRunning = false;
-  /* Where a months-in-one-workbook file lands: 'separate' gives each month a
-     period key of its own so the periods the statements are built from stay
-     untouched, 'normal' writes that entity's TB straight into them. Defaults
-     to separate — the destructive one has to be picked. */
-  let monthMode = 'separate';
 
   const $ = id => document.getElementById(id);
 
@@ -129,9 +124,8 @@
      one saved period per sheet — the shared reader in month-import.js does
      the work, so Cost Center's own upload lands the months identically. */
   function ingestMonthSheets(entityCode, file, wb, months) {
-    const separate = monthMode === 'separate';
-    const plan = MonthTB.planFor(months, separate);
-    if (!confirm(MonthTB.confirmText(entityCode, plan, separate))) return;
+    const plan = MonthTB.planFor(months);
+    if (!confirm(MonthTB.confirmText(entityCode, plan))) return;
     const result = MonthTB.run(entityCode, file.name, wb, plan);
     alert(MonthTB.resultText(entityCode, result));
     renderAll();
@@ -603,10 +597,6 @@
   $('wbDrop').addEventListener('dragover', e => { e.preventDefault(); $('wbDrop').classList.add('drag'); });
   $('wbDrop').addEventListener('dragleave', () => $('wbDrop').classList.remove('drag'));
   $('wbDrop').addEventListener('drop', e => { e.preventDefault(); $('wbDrop').classList.remove('drag'); handleWorkbookFiles(e.dataTransfer.files); });
-  $('monthModeSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
-    monthMode = b.dataset.mode;
-    $('monthModeSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
-  });
   $('filterSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
     filter = b.dataset.f; $('filterSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); renderAll();
   });

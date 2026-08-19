@@ -56,30 +56,29 @@
     return hit || entities[0];
   }
 
-  /* Where each month lands. `separate` keeps the periods the statements are
-     built from out of it: the raw export out of the accounting system and the
-     workpaper's own sheet for the same month are not the same trial balance
-     (the workpaper carries reclass and cut-off entries that haven't been
-     posted), so a cost-centre import gets a key of its own. Every month
-     calculation on the Ratios page matches a bare "YYYY-MM" only, which is
-     what keeps a suffixed period out of the statements entirely. */
+  /* Where each month lands: always a key of its own, never the period the
+     statements are built from. The raw export out of the accounting system
+     and the workpaper's own sheet for the same month are not the same trial
+     balance — the workpaper carries reclass and cut-off entries that haven't
+     been posted, worth 111M between two lines in one month tested — so
+     writing one over the other to gain a cost-centre dimension moves real
+     numbers. Every month calculation on the Ratios page matches a bare
+     "YYYY-MM" only, which is what keeps a suffixed period out of the
+     statements entirely. */
   const CC_SUFFIX = '-cc';
-  function planFor(months, separate) {
+  function planFor(months) {
     return months.map(m => ({
       sheet: m.sheet,
-      key: separate ? m.key + CC_SUFFIX : m.key,
-      label: labelFromKey(m.key) + (separate ? ' · Cost Center' : ''),
+      key: m.key + CC_SUFFIX,
+      label: labelFromKey(m.key) + ' · Cost Center',
     }));
   }
 
-  function confirmText(entityCode, plan, separate) {
+  function confirmText(entityCode, plan) {
     const lines = plan.map(p => `   ${p.sheet}  →  ${p.label} (${p.key})`).join('\n');
     return `ไฟล์นี้มี ${plan.length} เดือนอยู่ในไฟล์เดียว — จะแยกเป็น ${plan.length} งวดให้อัตโนมัติ\n\n${lines}\n\n`
       + `นำเข้าเป็นงบทดลองของบริษัท ${entityCode}\n\n`
-      + (separate
-        ? 'เป็นงวดชุดใหม่แยกต่างหาก — งบทดลองของงวดปกติไม่ถูกแตะ ใช้ดูที่หน้า Cost Center'
-        : `งวดที่มีอยู่แล้วจะถูกทับเฉพาะงบทดลองของ ${entityCode} เท่านั้น (บริษัทอื่นและรายการตัดบัญชีของงวดนั้นยังอยู่ครบ)\n`
-          + '⚠ ถ้างวดนั้นมีงบทดลองจากไฟล์ Conso อยู่แล้ว ตัวเลขงบอาจเปลี่ยน — ไฟล์ Conso มีรายการปรับปรุงที่ระบบบัญชียังไม่ได้ลง');
+      + 'เป็นงวดชุดใหม่แยกต่างหาก — งบทดลองของงวดปกติไม่ถูกแตะ ใช้ดูที่หน้า Cost Center';
   }
 
   /* Write the plan. Only this entity's TB is touched in each period, so

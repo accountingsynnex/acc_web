@@ -389,8 +389,8 @@
         const entity = MonthTB.guessEntity(wb, ENTITY_CODES);
         const months = MonthTB.monthSheetsOf(wb, entity);
         if (months.length) {
-          const plan = MonthTB.planFor(months, true);
-          if (!confirm(MonthTB.confirmText(entity, plan, true))) return;
+          const plan = MonthTB.planFor(months);
+          if (!confirm(MonthTB.confirmText(entity, plan))) return;
           const result = MonthTB.run(entity, file.name, wb, plan);
           alert(MonthTB.resultText(entity, result));
           // Land on a period the reader can actually see the result in. A
