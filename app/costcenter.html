@@ -19,7 +19,7 @@
       <button class="iconbtn" id="themeBtn" title="สลับโหมดสว่าง/มืด" aria-label="Toggle theme"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg></button>
     </div>
     <div class="content">
-      <div class="page-head"><h1>ค่าใช้จ่ายรายแผนก (Cost Center)</h1><p>คำนวณสดจากงบทดลองที่นำเข้า — ต้องเป็นไฟล์ที่มีคอลัมน์ <b>Department</b> (TB รายแผนก) ระบบจะเก็บมิติแผนกไว้ให้เอง ส่วน <b>Budget</b> นำเข้าแยกเป็นอีกไฟล์ (ระบบบัญชีไม่ได้ส่งงบประมาณมากับงบทดลอง) — ถ้ายังไม่มี Budget หน้านี้จะแสดงเฉพาะ Actual</p></div>
+      <div class="page-head"><h1>ค่าใช้จ่ายรายแผนก (Cost Center)</h1><p>คำนวณสดจากงบทดลองที่นำเข้า — ต้องเป็นไฟล์ที่มีคอลัมน์ <b>Department</b> (TB รายแผนก) ระบบจะเก็บมิติแผนกไว้ให้เอง ถ้าไฟล์มีคอลัมน์ <b>CostCenter</b> ต่อจากแผนกด้วย จะกดแผนกเข้าไปดูรายศูนย์ต้นทุนได้อีกชั้น ส่วน <b>Budget</b> นำเข้าแยกเป็นอีกไฟล์ (ระบบบัญชีไม่ได้ส่งงบประมาณมากับงบทดลอง) — ถ้ายังไม่มี Budget หน้านี้จะแสดงเฉพาะ Actual</p></div>
       <input type="file" id="budgetInput" class="sr-only" accept=".csv,.tsv,.txt,.xlsx,.xls" />
 
       <div id="banner"></div>

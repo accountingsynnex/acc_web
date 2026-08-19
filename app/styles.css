@@ -343,6 +343,16 @@ table td.nw,table th.nw{white-space:nowrap}
 .dept-detail .inner .acct-scroll{max-height:340px;overflow-y:auto}
 .dept-detail .inner thead th{position:sticky;top:0;z-index:1;background:var(--glass-strong)}
 tr.acct-over td{background:var(--bad-soft)}
+/* cost centre — the optional third level, inside a department's drill-down */
+.cc-row{cursor:pointer}
+.cc-row td.chev{color:var(--faint);font-size:11px;width:14px}
+.cc-row.open td{background:color-mix(in srgb,var(--accent) 7%,transparent)}
+.cc-detail>td{padding:0}
+.cc-detail .inner{padding:2px 0 10px 26px}
+/* The account list nested one level deeper gets its own, shorter scroll box
+   so a long cost centre can't push the department's own list off-screen. */
+.cc-detail .inner .acct-scroll{max-height:240px}
+.cc-detail .inner td{font-size:12px}
 
 /* Sortable column header */
 th.sortable{cursor:pointer;user-select:none;white-space:nowrap}

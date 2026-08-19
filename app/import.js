@@ -51,6 +51,30 @@
     return null;
   }
 
+  /* The month a WORKSHEET is named after, as a period key. A file with one
+     sheet per month names them "Jan 26" / "Feb-2026" / "ม.ค. 69" rather than
+     repeating the year the way a filename does, so this reads a month name
+     plus a year: 2-digit years are Buddhist-era when they land in the 60s-70s
+     (69 = 2569 = 2026) and Gregorian otherwise, matching how the company
+     writes both. Returns null for anything that isn't clearly a month. */
+  const MONTH_WORDS = [
+    ['jan', 'ม.ค', 'มกรา'], ['feb', 'ก.พ', 'กุมภา'], ['mar', 'มี.ค', 'มีนา'], ['apr', 'เม.ย', 'เมษา'],
+    ['may', 'พ.ค', 'พฤษภา'], ['jun', 'มิ.ย', 'มิถุนา'], ['jul', 'ก.ค', 'กรกฎา'], ['aug', 'ส.ค', 'สิงหา'],
+    ['sep', 'ก.ย', 'กันยา'], ['oct', 'ต.ค', 'ตุลา'], ['nov', 'พ.ย', 'พฤศจิกา'], ['dec', 'ธ.ค', 'ธันวา'],
+  ];
+  function periodKeyFromSheetName(name) {
+    const s = String(name).trim().toLowerCase();
+    const mi = MONTH_WORDS.findIndex(words => words.some(w => s.includes(w)));
+    if (mi === -1) return null;
+    const ym = /(\d{2,4})\s*$/.exec(s);
+    if (!ym) return null;
+    let year = +ym[1];
+    if (year < 100) year += year >= 60 && year <= 99 ? 1957 : 2000;   // 69 -> 2026, 26 -> 2026
+    else if (year >= 2500) year -= 543;
+    if (year < 2000 || year > 2100) return null;
+    return `${year}-${String(mi + 1).padStart(2, '0')}`;
+  }
+
   const TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
   const labelFromKey = key => {
     const m = /^(\d{4})-(\d{2})$/.exec(key);
@@ -68,9 +92,9 @@
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const { rows, deptRows } = parseTB(reader.result);
+        const { rows, deptRows, dimNames } = parseTB(reader.result);
         if (!rows.length) throw new Error('ไม่พบแถวบัญชีในไฟล์');
-        Store.setTB(entityCode, file.name, rows, activePeriod, deptRows);
+        Store.setTB(entityCode, file.name, rows, activePeriod, deptRows, '', dimNames);
       } catch (e) { alert(`อ่านไฟล์ของ ${entityCode} ไม่ได้: ${e.message}`); }
       renderAll();
     };
@@ -98,11 +122,18 @@
         // across different periods' templates.
         const norm = s => String(s).trim().replace(/[\s_-]+/g, ' ').toUpperCase();
         const wanted = 'TB ' + entityCode.toUpperCase();
-        const sheetName = wb.SheetNames.find(n => norm(n) === wanted) || wb.SheetNames[0];
+        // A file holding one sheet per month ("Jan 26" … "Jul 26") names no
+        // sheet after the entity, and taking the first one would import
+        // January no matter which period was selected — silently, since the
+        // rows parse perfectly well. The period being imported into already
+        // says which month is wanted, so it picks the matching sheet.
+        const sheetName = wb.SheetNames.find(n => norm(n) === wanted)
+          || wb.SheetNames.find(n => periodKeyFromSheetName(n) === activePeriod)
+          || wb.SheetNames[0];
         const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, raw: true, defval: null });
-        const { rows, deptRows } = buildRows(aoa);
+        const { rows, deptRows, dimNames } = buildRows(aoa);
         if (!rows.length) throw new Error('ไม่พบแถวบัญชีในไฟล์');
-        Store.setTB(entityCode, file.name + ' › ' + sheetName, rows, activePeriod, deptRows);
+        Store.setTB(entityCode, file.name + ' › ' + sheetName, rows, activePeriod, deptRows, deptRows.length ? sheetName : '', dimNames);
       } catch (e) { alert(`อ่านไฟล์ของ ${entityCode} ไม่ได้: ${e.message}`); }
       renderAll();
     }, 30);
@@ -258,14 +289,14 @@
           // reported once at the end instead of aborting the whole import.
           try {
             const read = n => buildRows(XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: null }));
-            const { rows, deptRows } = read(sheetName);
-            let dept = deptRows, deptSource = deptRows.length ? sheetName : '';
+            const { rows, deptRows, dimNames } = read(sheetName);
+            let dept = deptRows, deptSource = deptRows.length ? sheetName : '', dims = dimNames;
             if (!dept.length && deptVariant[ent.code]) {
               const got = read(deptVariant[ent.code]);
-              if (got.deptRows.length) { dept = got.deptRows; deptSource = deptVariant[ent.code]; }
+              if (got.deptRows.length) { dept = got.deptRows; deptSource = deptVariant[ent.code]; dims = got.dimNames; }
             }
             if (rows.length) {
-              Store.setTB(ent.code, file.name + ' › ' + sheetName, rows, activePeriod, dept, deptSource);
+              Store.setTB(ent.code, file.name + ' › ' + sheetName, rows, activePeriod, dept, deptSource, dims);
               added.push(ent.code);
               if (deptSource && !deptSheet) deptSheet = deptSource;
             } else {
@@ -366,8 +397,8 @@
         if (typeof SAMPLES !== 'undefined' && SAMPLES[ent]) text = SAMPLES[ent].text;   // works offline (file://)
         else { const res = await fetch('../test/' + fn); if (res.ok) text = await res.text(); }
         if (!text) continue;
-        const { rows, deptRows } = parseTB(text);
-        if (rows.length) Store.setTB(ent, fn, rows, activePeriod, deptRows);
+        const { rows, deptRows, dimNames } = parseTB(text);
+        if (rows.length) Store.setTB(ent, fn, rows, activePeriod, deptRows, '', dimNames);
       } catch (e) { /* skip */ }
     }
     renderAll();

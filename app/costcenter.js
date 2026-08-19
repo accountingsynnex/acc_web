@@ -19,6 +19,9 @@
   const isExpense = code => /^6/.test(code);
 
   const expandedDepts = new Set();
+  // Cost centres opened inside an expanded department, keyed "dept|cc" — a
+  // third level, present only when the imported TB carries that dimension.
+  const expandedCCs = new Set();
 
   /* How the accounts inside a department are ordered. One shared setting,
      not one per department: picking "by code" once should reorder every
@@ -142,22 +145,41 @@
     }
     $('overrunPanel').style.display = ''; $('deptPanel').style.display = '';
 
-    const { rows, deptNames, sources } = Store.deptRows(period);
+    const { rows, deptNames, ccNames, sources, hasCC } = Store.deptRows(period);
     const budgetRec = Store.budget();
     const bmap = budgetRec && budgetRec.map;
     const expense = rows.filter(r => isExpense(r.code));
 
     const nameOf = d => deptNames[d] || d;
+    const ccNameOf = (d, cc) => ccNames[d + ' ' + cc] || cc;
+    // buildRows already strips the "-Department-Cost centre" labels these
+    // exports append to the account name, so this is only a fallback for a
+    // TB imported before it did.
+    const acctName = r => {
+      const tail = [nameOf(r.dept), r.cc ? ccNameOf(r.dept, r.cc) : ''].filter(Boolean);
+      let n = (r.name || '').trim();
+      for (const t of [tail.join('-'), tail[0]]) {
+        if (t && n.endsWith('-' + t)) { n = n.slice(0, -(t.length + 1)); break; }
+      }
+      return n.trim() || r.code;
+    };
 
-    // ---- aggregate by department, and by account within each department ----
+    // ---- aggregate by department, then by cost centre, then by account ----
     const byDept = new Map();
     for (const r of expense) {
-      if (!byDept.has(r.dept)) byDept.set(r.dept, { code: r.dept, actual: 0, exactBudget: 0, hasExact: false, accounts: [] });
+      if (!byDept.has(r.dept)) byDept.set(r.dept, { code: r.dept, actual: 0, exactBudget: 0, hasExact: false, accounts: [], ccs: new Map() });
       const d = byDept.get(r.dept);
       d.actual += r.closing;
       const b = exactBudget(bmap, r.code, r.dept);
       if (b != null) { d.exactBudget += b; d.hasExact = true; }
-      d.accounts.push({ code: r.code, name: (r.name || '').split('-')[0].trim() || r.code, actual: r.closing, budget: b });
+      const acct = { code: r.code, name: acctName(r), actual: r.closing, budget: b };
+      d.accounts.push(acct);
+      if (r.cc) {
+        if (!d.ccs.has(r.cc)) d.ccs.set(r.cc, { code: r.cc, actual: 0, accounts: [] });
+        const c = d.ccs.get(r.cc);
+        c.actual += r.closing;
+        c.accounts.push(acct);
+      }
     }
     const depts = [...byDept.values()].map(d => {
       // Per-account budget when the file has that detail, otherwise the
@@ -170,7 +192,7 @@
     // department-only budget can't be attributed to a specific account.
     const byAccount = new Map();
     for (const r of expense) {
-      if (!byAccount.has(r.code)) byAccount.set(r.code, { code: r.code, name: (r.name || '').split('-')[0].trim() || r.code, actual: 0, budget: 0, hasBudget: false });
+      if (!byAccount.has(r.code)) byAccount.set(r.code, { code: r.code, name: acctName(r), actual: 0, budget: 0, hasBudget: false });
       const a = byAccount.get(r.code);
       a.actual += r.closing;
       const b = exactBudget(bmap, r.code, r.dept);
@@ -201,7 +223,9 @@
     const overCount = depts.filter(d => d.variance > 0.5).length;
     $('tiles').innerHTML = [
       tile('Actual รวม (ทุกแผนก)', M(totalActual), 'จากบัญชีค่าใช้จ่าย 6xxxxxx'),
-      hasBudget ? tile('Budget รวม (ทุกแผนก)', M(totalBudget), `${depts.length} แผนก`) : tile('จำนวนแผนก', String(depts.length), 'จากมิติแผนกในไฟล์'),
+      hasBudget ? tile('Budget รวม (ทุกแผนก)', M(totalBudget), `${depts.length} แผนก`)
+        : hasCC ? tile('แผนก / ศูนย์ต้นทุน', `${depts.length} / ${new Set(expense.filter(r => r.cc).map(r => r.dept + '|' + r.cc)).size}`, 'จากมิติในไฟล์ที่นำเข้า')
+          : tile('จำนวนแผนก', String(depts.length), 'จากมิติแผนกในไฟล์'),
       hasBudget
         ? tile('ผลต่างรวม', (totalActual - totalBudget < 0 ? '−' : '+') + M(Math.abs(totalActual - totalBudget)), totalActual > totalBudget ? 'ใช้เกิน budget' : 'ใช้ต่ำกว่า budget', totalActual > totalBudget ? 'flag' : '')
         : tile('จำนวนบัญชีค่าใช้จ่าย', String(accounts.length), 'ที่มียอดในงวดนี้'),
@@ -233,7 +257,54 @@
 
     // ---- department summary + drill-down ----
     const deptAll = depts.slice().sort((a, b) => hasBudget ? Math.abs(b.variance) - Math.abs(a.variance) : b.actual - a.actual);
-    $('deptSub').textContent = `ครบทั้ง ${deptAll.length} แผนก — ${hasBudget ? 'เรียงตามผลต่างสัมบูรณ์' : 'เรียงตามยอดใช้จ่าย'} (กราฟแสดง Top 8, ตารางเลื่อนดูได้ครบ)`;
+    const splitCount = deptAll.filter(d => d.ccs.size > 1).length;
+    $('deptSub').textContent = `ครบทั้ง ${deptAll.length} แผนก — ${hasBudget ? 'เรียงตามผลต่างสัมบูรณ์' : 'เรียงตามยอดใช้จ่าย'} (กราฟแสดง Top 8, ตารางเลื่อนดูได้ครบ)`
+      + (splitCount ? ` · ${splitCount} แผนกกดเข้าไปดูรายศูนย์ต้นทุนได้` : '');
+
+    const acctCols = () => `${sortableTh('code', 'บัญชี', '')}${sortableTh('actual', 'Actual', 'r')}${accountBudgets ? sortableTh('budget', 'Budget', 'r') + sortableTh('variance', 'ผลต่าง', 'r') : ''}`;
+    const acctLine = a => {
+      const v = a.budget == null ? null : a.actual - a.budget;
+      return `<tr class="${v != null && v > 0.5 ? 'acct-over' : ''}">
+        <td class="code">${esc(a.name)}<div class="muted" style="font-size:10.5px;font-weight:500">${esc(a.code)}</div></td>
+        <td class="r">${money(a.actual)}</td>
+        ${accountBudgets ? `<td class="r">${a.budget == null ? '—' : money(a.budget)}</td>
+        <td class="r ${v != null && v > 0 ? 'neg' : ''}">${v == null ? '—' : (v >= 0 ? '+' : '') + money(v)}</td>` : ''}
+      </tr>`;
+    };
+    // Accounts of one department, merged across its cost centres — the view
+    // when the export has no cost-centre dimension, and the fallback for a
+    // department that has all its spend under a single one.
+    const acctTable = list => `<div class="acct-scroll"><table>
+      <thead><tr>${acctCols()}</tr></thead>
+      <tbody>${sortAccounts(list).map(acctLine).join('')}</tbody>
+    </table></div>`;
+
+    /* Cost centres of one department. Each is a row that opens to its own
+       accounts, so the department stays readable at a glance (which team
+       spent what) with the account detail one more click down rather than
+       hundreds of rows deep. Only rendered when the import actually carries
+       the dimension AND the department is split across more than one — a
+       department with a single cost centre would just be the same list
+       behind an extra click. */
+    function ccTable(d) {
+      const list = [...d.ccs.values()].sort((a, b) => b.actual - a.actual);
+      const row = c => {
+        const key = d.code + '|' + c.code;
+        const open = expandedCCs.has(key);
+        const share = d.actual ? 100 * c.actual / d.actual : 0;
+        return `<tr class="cc-row ${open ? 'open' : ''}" data-cc="${esc(key)}">
+            <td class="chev">${open ? '▾' : '▸'}</td>
+            <td class="code">${esc(ccNameOf(d.code, c.code))} <span class="muted" style="font-weight:500">(${esc(c.code)})</span></td>
+            <td class="r">${money(c.actual)}</td>
+            <td class="r muted">${share.toFixed(1)}%</td>
+          </tr>
+          <tr class="cc-detail" ${open ? '' : 'hidden'}><td colspan="4"><div class="inner">${acctTable(c.accounts)}</div></td></tr>`;
+      };
+      return `<div class="acct-scroll"><table>
+        <thead><tr><th></th><th>ศูนย์ต้นทุน</th><th class="r">Actual</th><th class="r">สัดส่วนในแผนก</th></tr></thead>
+        <tbody>${list.map(row).join('')}</tbody>
+      </table></div>`;
+    }
 
     function detailHtml(d) {
       const open = expandedDepts.has(d.code);
@@ -242,27 +313,15 @@
       // and sorting by code exists precisely to go find one account. Long
       // departments scroll inside the drill-down instead (CSS max-height, so
       // short ones get no scrollbar at all).
-      const list = sortAccounts(d.accounts);
-      const line = a => {
-        const v = a.budget == null ? null : a.actual - a.budget;
-        return `<tr class="${v != null && v > 0.5 ? 'acct-over' : ''}">
-          <td class="code">${esc(a.name)}<div class="muted" style="font-size:10.5px;font-weight:500">${esc(a.code)}</div></td>
-          <td class="r">${money(a.actual)}</td>
-          ${accountBudgets ? `<td class="r">${a.budget == null ? '—' : money(a.budget)}</td>
-          <td class="r ${v != null && v > 0 ? 'neg' : ''}">${v == null ? '—' : (v >= 0 ? '+' : '') + money(v)}</td>` : ''}
-        </tr>`;
-      };
-      return `<tr class="dept-detail" data-for="${esc(d.code)}" ${open ? '' : 'hidden'}><td colspan="${hasBudget ? 6 : 4}"><div class="inner"><div class="acct-scroll"><table>
-        <thead><tr>${sortableTh('code', 'บัญชี', '')}${sortableTh('actual', 'Actual', 'r')}${accountBudgets ? sortableTh('budget', 'Budget', 'r') + sortableTh('variance', 'ผลต่าง', 'r') : ''}</tr></thead>
-        <tbody>${list.map(line).join('')}</tbody>
-      </table></div></div></td></tr>`;
+      const inner = d.ccs.size > 1 ? ccTable(d) : acctTable(d.accounts);
+      return `<tr class="dept-detail" data-for="${esc(d.code)}" ${open ? '' : 'hidden'}><td colspan="${hasBudget ? 6 : 4}"><div class="inner">${inner}</div></td></tr>`;
     }
 
     $('deptTbl').innerHTML = `<thead><tr><th></th><th>แผนก</th><th class="r">Actual</th>${hasBudget ? '<th class="r">Budget</th><th class="r">ผลต่าง</th><th>สถานะ</th>' : ''}</tr></thead>
       <tbody>${deptAll.map(d => `
         <tr class="dept-row ${expandedDepts.has(d.code) ? 'open' : ''}" data-dept="${esc(d.code)}">
           <td class="chev">${expandedDepts.has(d.code) ? '▾' : '▸'}</td>
-          <td class="code">${esc(nameOf(d.code))} <span class="muted" style="font-weight:500">(${esc(d.code)})</span></td>
+          <td class="code">${esc(nameOf(d.code))} <span class="muted" style="font-weight:500">(${esc(d.code)})</span>${d.ccs.size > 1 ? `<div class="muted" style="font-size:11px;font-weight:500">${d.ccs.size} ศูนย์ต้นทุน</div>` : ''}</td>
           <td class="r">${money(d.actual)}</td>
           ${hasBudget ? `<td class="r">${money(d.budget)}</td>
           <td class="r ${d.variance > 0 ? 'neg' : ''}">${d.variance >= 0 ? '+' : ''}${money(d.variance)}</td>
@@ -279,6 +338,18 @@
         if (acctSort.key === key) acctSort.dir = acctSort.dir === 'asc' ? 'desc' : 'asc';
         else acctSort = { key, dir: key === 'code' ? 'asc' : 'desc' };   // codes read best low→high, money high→low
         render();
+        return;
+      }
+      // A cost-centre row lives inside a department's own drill-down, so it
+      // has to be checked before the department row that contains it.
+      const ccRow = e.target.closest('.cc-row');
+      if (ccRow) {
+        const key = ccRow.dataset.cc;
+        const openCC = !expandedCCs.has(key);
+        if (openCC) expandedCCs.add(key); else expandedCCs.delete(key);
+        ccRow.classList.toggle('open', openCC);
+        ccRow.querySelector('.chev').textContent = openCC ? '▾' : '▸';
+        ccRow.nextElementSibling.hidden = !openCC;
         return;
       }
       const row = e.target.closest('.dept-row');

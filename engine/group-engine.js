@@ -194,7 +194,16 @@ function buildRows(matrix) {
   const oi = findCol(headers, ['opening', 'beginning', 'ยอดยกมา', 'ยกมา', 'ต้นงวด']);
   const di = findCol(headers, ['debit', 'เดบิต']);
   const cri = findCol(headers, ['credit', 'เครดิต']);
-  const dpi = findCol(headers, ['department', 'dept', 'cost center', 'costcentre', 'cost centre', 'แผนก', 'ศูนย์ต้นทุน']);
+  // Two separate dimensions, looked up in their own right: some exports carry
+  // Department alone ("TB SYN_TW"), some carry Department AND CostCenter under
+  // it. Searching for department first matters — a single pattern list would
+  // let whichever column happened to come first stand in for both.
+  const dpi = findCol(headers, ['department', 'dept', 'แผนก']);
+  const cci = findCol(headers, ['costcenter', 'cost center', 'costcentre', 'cost centre', 'ศูนย์ต้นทุน']);
+  // With no department column at all, a lone cost-centre column IS the
+  // dimension this export offers, so it takes the department's place.
+  const dimI = dpi !== -1 ? dpi : cci;
+  const subI = dpi !== -1 ? cci : -1;
   if (ci === -1) {
     const fallback = parseStatementReport(matrix);
     if (fallback) return fallback;
@@ -212,7 +221,12 @@ function buildRows(matrix) {
   // them) so the cost-centre view has a real source while every existing
   // caller keeps seeing exactly one row per account code. Empty unless the
   // export actually carries a department dimension.
-  const deptRows = [];
+  // A row here is only its dimension codes and its figures. The readable
+  // labels repeat across thousands of rows, so they're resolved once into
+  // dimNames below and looked up by code — a department-level export runs to
+  // tens of thousands of rows, and carrying three label strings on each of
+  // them was most of what the browser had to keep in storage.
+  const deptRows = [], deptNamesRaw = [];
   for (let r = headerRow + 1; r < matrix.length; r++) {
     const cells = matrix[r] || [];
     const code = String(cells[ci] == null ? '' : cells[ci]).trim();
@@ -223,18 +237,108 @@ function buildRows(matrix) {
     else closing = 0;
     const opening = oi !== -1 ? toNumber(cells[oi]) : null;
     const name = ni !== -1 ? String(cells[ni] == null ? '' : cells[ni]).trim() : '';
-    if (dpi !== -1) {
-      const dept = String(cells[dpi] == null ? '' : cells[dpi]).trim();
-      // These exports name the account "STAFF SALARIES-Marketing", i.e. the
-      // department's own label is the suffix — the only place a readable
-      // department name exists, since the Department column holds just a code.
-      if (dept) deptRows.push({ code, dept, name, deptName: name.includes('-') ? name.slice(name.lastIndexOf('-') + 1).trim() : '', closing, opening });
+    if (dimI !== -1) {
+      const dept = String(cells[dimI] == null ? '' : cells[dimI]).trim();
+      const cc = subI !== -1 ? String(cells[subI] == null ? '' : cells[subI]).trim() : '';
+      // Labels are resolved after the whole sheet is read — see labelDims.
+      if (dept) { deptRows.push({ code, dept, cc, closing, opening }); deptNamesRaw.push(name); }
     }
     const cur = byCode.get(code);
     if (cur) { cur.closing += closing; if (opening != null) cur.opening = (cur.opening || 0) + opening; if (!cur.name && name) cur.name = name; }
     else byCode.set(code, { code, name, closing, opening });
   }
-  return { rows: [...byCode.values()], deptRows, columns: { code: ci, name: ni, closing: cli, opening: oi, debit: di, credit: cri, dept: dpi } };
+  const dimNames = labelDims(deptRows, deptNamesRaw, subI !== -1);
+  // The deduped rows took their name from whichever row of that account came
+  // first, labels and all ("STAFF SALARIES-Center-Center"). Now that the
+  // labels are known they come back off, so every page reading these rows
+  // shows the account, not the account plus one arbitrary department.
+  for (const row of byCode.values()) {
+    const clean = dimNames.account && dimNames.account[row.code];
+    if (clean) row.name = clean;
+  }
+  return { rows: [...byCode.values()], deptRows, dimNames, columns: { code: ci, name: ni, closing: cli, opening: oi, debit: di, credit: cri, dept: dimI, cc: subI } };
+}
+
+/* Readable names for the dimension codes. These exports hold only codes in
+   the Department/CostCenter columns and spell the labels into the account
+   name instead — "STAFF SALARIES-Marketing" with one dimension, or
+   "STAFF SALARIES-Marketing-Multimedia Product Group (MPG)" with two.
+
+   Taking the text after the last "-" is enough for one dimension but wrong
+   for two (it yields the cost centre where the department belongs), and
+   splitting on "-" outright breaks the labels that contain one of their own
+   ("Marketplace (E-Commerce)", "Call-Center"). So the suffix is found by
+   removing the account name first: an account that appears under several
+   dimension values has its name as the common prefix of those rows, which
+   leaves exactly the label part behind. Codes appearing under a single value
+   can't be split that way, so they reuse a suffix already learned from
+   another account with the same dimension codes.
+
+   Returns { dept: {code: label}, cc: {"dept cc": label} } rather than
+   labelling each row: the same handful of labels repeat across every row of
+   a department-level export, and one lookup keeps that out of storage.
+   Labels fall back to the code itself, never to a guess, so an export that
+   spells no labels at all still reads sensibly. */
+function labelDims(deptRows, names, twoLevel) {
+  const out = { dept: {}, cc: {} };
+  if (!deptRows.length) return out;
+  const lcp = (a, b) => { let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++; return a.slice(0, i); };
+  const upToDash = s => { const i = s.lastIndexOf('-'); return i === -1 ? s : s.slice(0, i); };
+
+  // 1) account name per code = common prefix of its rows' names, cut back to a
+  // "-" boundary so a prefix that stops mid-label isn't mistaken for the name.
+  const byCode = new Map();
+  deptRows.forEach((r, i) => {
+    byCode.set(r.code, byCode.has(r.code) ? lcp(byCode.get(r.code), names[i]) : names[i]);
+  });
+  // 2) the suffix each (dept, cc) pair spells, learned from any code that
+  // appears under more than one pair.
+  const suffixOf = new Map();
+  deptRows.forEach((r, i) => {
+    const name = names[i], prefix = byCode.get(r.code);
+    if (prefix === name) return;                     // single-valued code — nothing to subtract yet
+    const base = upToDash(prefix);
+    if (!name.startsWith(base)) return;
+    const suffix = name.slice(base.length).replace(/^-/, '').trim();
+    const key = r.dept + ' ' + r.cc;
+    if (suffix && !suffixOf.has(key)) suffixOf.set(key, suffix);
+  });
+  // 3) department label = common prefix of its pairs' suffixes, cut back to a
+  // "-" boundary. A department holding one cost centre has the cost centre's
+  // own label still attached, which that cut removes.
+  const deptSuffixes = new Map();
+  for (const [key, suffix] of suffixOf) {
+    const dept = key.slice(0, key.indexOf(' '));
+    deptSuffixes.set(dept, deptSuffixes.has(dept) ? lcp(deptSuffixes.get(dept), suffix) : suffix);
+  }
+  for (const [dept, common] of deptSuffixes) {
+    const label = (twoLevel ? upToDash(common) : common).replace(/[\s-]+$/, '').trim();
+    if (label) out.dept[dept] = label;
+  }
+  for (const r of deptRows) {
+    const key = r.dept + ' ' + r.cc;
+    if (out.dept[r.dept] == null) out.dept[r.dept] = suffixOf.get(key) || r.dept;
+    if (!twoLevel || out.cc[key] != null) continue;
+    const suffix = suffixOf.get(key) || '';
+    const dl = out.dept[r.dept];
+    out.cc[key] = (suffix.startsWith(dl) ? suffix.slice(dl.length).replace(/^-/, '') : suffix).trim() || r.cc;
+  }
+  // 4) the account's own name, with the labels taken back off. An account
+  // seen under several dimension values gives it up as the common prefix
+  // above; one seen under a single value has to have that value's own
+  // suffix — learned from some other account — subtracted instead.
+  out.account = {};
+  deptRows.forEach((r, i) => {
+    if (out.account[r.code] != null) return;
+    const prefix = byCode.get(r.code);
+    let name = prefix === names[i] ? names[i] : upToDash(prefix);
+    if (prefix === names[i]) {
+      const suffix = suffixOf.get(r.dept + ' ' + r.cc);
+      if (suffix && name.endsWith('-' + suffix)) name = name.slice(0, -(suffix.length + 1));
+    }
+    out.account[r.code] = name.trim();
+  });
+  return out;
 }
 
 /* Parse a raw TB export (CSV or tab-separated) into rows. */
@@ -360,5 +464,5 @@ function journalEffect(journals) {
   return eff;
 }
 
-const GroupEngine = { parseTB, buildRows, validateTB, applyRulebook, parseJournals, journalEffect, toNumber, isCreditNatured, parseStatementReport };
+const GroupEngine = { parseTB, buildRows, labelDims, validateTB, applyRulebook, parseJournals, journalEffect, toNumber, isCreditNatured, parseStatementReport };
 if (typeof module !== 'undefined') module.exports = GroupEngine;
