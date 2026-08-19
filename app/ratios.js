@@ -71,6 +71,13 @@
       const m = /^(\d{4})-\d{2}$/.exec(p.key);
       if (m && (!year || m[1] > year)) year = m[1];
     }
+    // Saved periods exist but none is a plain month — a period key can carry
+    // a suffix (a cost-centre import lands on "2026-03-cc" so it can't
+    // disturb the month the statements are built from), and every month
+    // calculation on this page reads a bare "YYYY-MM". With nothing else
+    // saved there is no quarter to resolve, so this reads as the pre-archive
+    // state rather than asking for a period called "null-03".
+    if (!year) return { archived: false };
     const key = `${year}-${QUARTER_END_MONTH[periodSel]}`;
     return { archived: true, year, key, period: Store.getPeriod(key) };
   }

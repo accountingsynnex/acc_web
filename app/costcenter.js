@@ -133,13 +133,13 @@
     // here doesn't look like it only touched this period.
     const period = Store.uiPeriod();
     if (!Store.hasData(period)) {
-      $('banner').innerHTML = `<div class="check no" style="margin-bottom:14px"><div class="ico">!</div><div><div class="t">ยังไม่ได้นำเข้างบทดลอง</div><div class="d">ไปที่ <a class="linkish" href="import.html">Import TB</a> ก่อน</div></div></div>`;
+      $('banner').innerHTML = `<div class="check no" style="margin-bottom:14px"><div class="ico">!</div><div><div class="t">ยังไม่ได้นำเข้างบทดลอง</div><div class="d">กด <b>นำเข้า TB รายศูนย์ต้นทุน</b> ด้านบนขวา แล้วเลือกไฟล์งบทดลองที่มีคอลัมน์ <b>Department</b> — หรือไปที่ <a class="linkish" href="import.html">Import TB</a></div></div></div>`;
       $('tiles').innerHTML = ''; $('overrunPanel').style.display = 'none'; $('deptPanel').style.display = 'none';
       return;
     }
     if (!Store.hasDeptData(period)) {
       $('banner').innerHTML = `<div class="check no" style="margin-bottom:14px"><div class="ico">!</div><div><div class="t">งบทดลองที่นำเข้าไม่มีมิติแผนก</div>
-        <div class="d">หน้านี้ต้องใช้ TB ที่มีคอลัมน์ <b>Department</b> (หนึ่งแถวต่อ บัญชี×แผนก) — ไฟล์ที่นำเข้าตอนนี้เป็น TB รวมรายบัญชีอย่างเดียว ลองนำเข้าไฟล์ TB รายแผนกที่หน้า <a class="linkish" href="import.html">Import TB</a></div></div></div>`;
+        <div class="d">หน้านี้ต้องใช้ TB ที่มีคอลัมน์ <b>Department</b> (หนึ่งแถวต่อ บัญชี×แผนก) — ไฟล์ที่นำเข้าตอนนี้เป็น TB รวมรายบัญชีอย่างเดียว กด <b>นำเข้า TB รายศูนย์ต้นทุน</b> ด้านบนขวาได้เลย (ถ้าไฟล์มีหลายเดือนในไฟล์เดียว ระบบแยกงวดให้เอง) — หรือไปที่หน้า <a class="linkish" href="import.html">Import TB</a></div></div></div>`;
       $('tiles').innerHTML = ''; $('overrunPanel').style.display = 'none'; $('deptPanel').style.display = 'none';
       return;
     }
@@ -365,6 +365,54 @@
     const deptTop = deptAll.slice(0, 8);
     drawChart('deptChart', deptTop.map(d => nameOf(d.code)), deptTop.map(d => d.actual), hasBudget ? deptTop.map(d => d.budget) : null);
   }
+
+  /* ---- department/cost-centre TB import, from this page ----------------
+     The same reader the Import page uses (month-import.js), offered here
+     because this is the page that needs the dimension — a file holding a
+     month per sheet becomes a period each, and always the separate keys:
+     a page about cost centres has no business rewriting the trial balance
+     the statements are built from. A single-sheet file goes to the period
+     being viewed, which is the one the reader is looking at. */
+  const ENTITY_CODES = (RULEBOOK.entities || []).map(e => e.code);
+  $('tbBtn').onclick = () => $('tbInput').click();
+  $('tbInput').onchange = e => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onerror = () => alert('อ่านไฟล์ไม่ได้');
+    reader.onload = () => setTimeout(() => {
+      try {
+        const wb = XLSX.read(new Uint8Array(reader.result), {
+          type: 'array', cellStyles: false, cellFormula: false, cellHTML: false, cellNF: false, bookVBA: false,
+        });
+        const entity = MonthTB.guessEntity(wb, ENTITY_CODES);
+        const months = MonthTB.monthSheetsOf(wb, entity);
+        if (months.length) {
+          const plan = MonthTB.planFor(months, true);
+          if (!confirm(MonthTB.confirmText(entity, plan, true))) return;
+          const result = MonthTB.run(entity, file.name, wb, plan);
+          alert(MonthTB.resultText(entity, result));
+          // Land on a period the reader can actually see the result in. A
+          // reload is what redraws the topbar picker around the new periods
+          // — it paints itself once, the same as when a period is picked.
+          if (result.added.length) { Store.setUiPeriod(plan[plan.length - 1].key); location.reload(); return; }
+        } else {
+          const sheet = wb.SheetNames.find(n => MonthTB.periodKeyFromSheetName(n) === Store.uiPeriod())
+            || wb.SheetNames[0];
+          const { rows, deptRows, dimNames } = buildRows(
+            XLSX.utils.sheet_to_json(wb.Sheets[sheet], { header: 1, raw: true, defval: null }));
+          if (!rows.length) throw new Error('ไม่พบแถวบัญชีในไฟล์');
+          if (!deptRows.length && !confirm(`ชีต "${sheet}" ไม่มีคอลัมน์ Department — นำเข้าเป็นงบทดลองธรรมดาของ ${entity} ต่อไหม?`)) return;
+          Store.setTB(entity, file.name + ' › ' + sheet, rows, Store.uiPeriod(), deptRows,
+            deptRows.length ? sheet : '', dimNames);
+          alert(`นำเข้า ${entity} จากชีต "${sheet}" แล้ว (${rows.length} บัญชี, ${deptRows.length} แถวมิติ)`);
+        }
+      } catch (err) { alert('อ่านไฟล์ไม่ได้: ' + err.message); }
+      render();
+    }, 30);
+    reader.readAsArrayBuffer(file);
+  };
 
   // ---- budget import ----
   $('budgetBtn').onclick = () => $('budgetInput').click();

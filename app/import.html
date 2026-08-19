@@ -44,6 +44,13 @@
         </div>
         <input type="file" id="wbInput" class="sr-only" accept=".xlsx,.xls" multiple />
         <div class="wb-or">หรือใส่ทีละบริษัท (CSV)</div>
+        <p class="muted" style="margin:-4px 0 8px;font-size:12.5px;text-align:center">ถ้าไฟล์ Excel ของบริษัทนั้นมีหลายเดือนอยู่ในไฟล์เดียว (ชีตละเดือน เช่น <b>Jan 26 · Feb 26 · …</b>) ลากครั้งเดียว ระบบจะแยกเป็นงวดให้เองทุกเดือน — เลือกได้ว่าจะลงที่ไหน</p>
+        <div style="display:flex;justify-content:center;margin-bottom:14px">
+          <div class="seg" id="monthModeSeg">
+            <button class="on" data-mode="separate" title="สร้างงวดชุดใหม่ เช่น 2026-03-cc — งบทดลองของงวดปกติไม่ถูกแตะ">ชุดแยก · ไม่ทับงบ</button>
+            <button data-mode="normal" title="เขียนทับงบทดลองของบริษัทนั้นในงวดปกติ">ลงงวดปกติ · ทับ TB เดิม</button>
+          </div>
+        </div>
         <div class="uploads" id="uploads"></div>
         <input type="file" id="fileInput" class="sr-only" accept=".csv,.tsv,.txt,.xlsx,.xls" />
       </section>
@@ -97,6 +104,7 @@
 <script src="../engine/rulebook.js"></script>
 <script src="../engine/group-engine.js"></script>
 <script src="store.js"></script>
+<script src="month-import.js"></script>
 <script src="samples.js"></script>
 <script src="shell.js"></script>
 <script src="import.js"></script>

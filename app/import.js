@@ -24,6 +24,11 @@
   // switcher change) starting mid-loop would race it and write a file into
   // the wrong period.
   let batchRunning = false;
+  /* Where a months-in-one-workbook file lands: 'separate' gives each month a
+     period key of its own so the periods the statements are built from stay
+     untouched, 'normal' writes that entity's TB straight into them. Defaults
+     to separate — the destructive one has to be picked. */
+  let monthMode = 'separate';
 
   const $ = id => document.getElementById(id);
 
@@ -51,36 +56,8 @@
     return null;
   }
 
-  /* The month a WORKSHEET is named after, as a period key. A file with one
-     sheet per month names them "Jan 26" / "Feb-2026" / "ม.ค. 69" rather than
-     repeating the year the way a filename does, so this reads a month name
-     plus a year: 2-digit years are Buddhist-era when they land in the 60s-70s
-     (69 = 2569 = 2026) and Gregorian otherwise, matching how the company
-     writes both. Returns null for anything that isn't clearly a month. */
-  const MONTH_WORDS = [
-    ['jan', 'ม.ค', 'มกรา'], ['feb', 'ก.พ', 'กุมภา'], ['mar', 'มี.ค', 'มีนา'], ['apr', 'เม.ย', 'เมษา'],
-    ['may', 'พ.ค', 'พฤษภา'], ['jun', 'มิ.ย', 'มิถุนา'], ['jul', 'ก.ค', 'กรกฎา'], ['aug', 'ส.ค', 'สิงหา'],
-    ['sep', 'ก.ย', 'กันยา'], ['oct', 'ต.ค', 'ตุลา'], ['nov', 'พ.ย', 'พฤศจิกา'], ['dec', 'ธ.ค', 'ธันวา'],
-  ];
-  function periodKeyFromSheetName(name) {
-    const s = String(name).trim().toLowerCase();
-    const mi = MONTH_WORDS.findIndex(words => words.some(w => s.includes(w)));
-    if (mi === -1) return null;
-    const ym = /(\d{2,4})\s*$/.exec(s);
-    if (!ym) return null;
-    let year = +ym[1];
-    if (year < 100) year += year >= 60 && year <= 99 ? 1957 : 2000;   // 69 -> 2026, 26 -> 2026
-    else if (year >= 2500) year -= 543;
-    if (year < 2000 || year > 2100) return null;
-    return `${year}-${String(mi + 1).padStart(2, '0')}`;
-  }
-
-  const TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-  const labelFromKey = key => {
-    const m = /^(\d{4})-(\d{2})$/.exec(key);
-    if (!m) return key;
-    return `${TH_MONTHS[+m[2] - 1]} ${+m[1] + 543}`;
-  };
+  const { periodKeyFromSheetName, labelFromKey } = MonthTB;
+  const TH_MONTHS = MonthTB.TH_MONTHS;
   const money = n => {
     const a = Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     return n < 0 ? '(' + a + ')' : a;
@@ -127,7 +104,15 @@
         // January no matter which period was selected — silently, since the
         // rows parse perfectly well. The period being imported into already
         // says which month is wanted, so it picks the matching sheet.
-        const sheetName = wb.SheetNames.find(n => norm(n) === wanted)
+        const entitySheet = wb.SheetNames.find(n => norm(n) === wanted);
+        // Several month-named sheets and no sheet named after the entity: the
+        // file is a run of months, not one period, so each sheet goes to its
+        // own period in one drop — the same thing the workbook drop zone does
+        // for a folder of monthly files, for a workbook that keeps the months
+        // inside itself instead.
+        const months = MonthTB.monthSheetsOf(wb, entityCode);
+        if (months.length) { ingestMonthSheets(entityCode, file, wb, months); return; }
+        const sheetName = entitySheet
           || wb.SheetNames.find(n => periodKeyFromSheetName(n) === activePeriod)
           || wb.SheetNames[0];
         const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, raw: true, defval: null });
@@ -138,6 +123,18 @@
       renderAll();
     }, 30);
     reader.readAsArrayBuffer(file);
+  }
+
+  /* One company's trial balance for several months, a sheet each, split into
+     one saved period per sheet — the shared reader in month-import.js does
+     the work, so Cost Center's own upload lands the months identically. */
+  function ingestMonthSheets(entityCode, file, wb, months) {
+    const separate = monthMode === 'separate';
+    const plan = MonthTB.planFor(months, separate);
+    if (!confirm(MonthTB.confirmText(entityCode, plan, separate))) return;
+    const result = MonthTB.run(entityCode, file.name, wb, plan);
+    alert(MonthTB.resultText(entityCode, result));
+    renderAll();
   }
 
   const isXlsx = f => /\.xlsx?$/i.test(f.name);
@@ -575,6 +572,10 @@
   $('wbDrop').addEventListener('dragover', e => { e.preventDefault(); $('wbDrop').classList.add('drag'); });
   $('wbDrop').addEventListener('dragleave', () => $('wbDrop').classList.remove('drag'));
   $('wbDrop').addEventListener('drop', e => { e.preventDefault(); $('wbDrop').classList.remove('drag'); handleWorkbookFiles(e.dataTransfer.files); });
+  $('monthModeSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
+    monthMode = b.dataset.mode;
+    $('monthModeSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  });
   $('filterSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
     filter = b.dataset.f; $('filterSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); renderAll();
   });

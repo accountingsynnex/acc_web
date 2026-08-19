@@ -15,12 +15,14 @@
       <div class="crumb">Output · <b>Cost Center</b></div>
       <div class="spacer"></div>
       <span class="selectish"><small>งวด</small><select id="viewPeriod" title="เลือกงวดที่จะดูหน้านี้"></select></span>
+      <button class="linkish" id="tbBtn" style="text-decoration:none" title="ไฟล์งบทดลองที่มีคอลัมน์ Department / CostCenter — ถ้ามีหลายเดือนในไฟล์เดียว ระบบแยกงวดให้เอง">นำเข้า TB รายศูนย์ต้นทุน</button>
       <button class="linkish" id="budgetBtn" style="text-decoration:none">นำเข้า Budget</button>
       <button class="iconbtn" id="themeBtn" title="สลับโหมดสว่าง/มืด" aria-label="Toggle theme"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg></button>
     </div>
     <div class="content">
       <div class="page-head"><h1>ค่าใช้จ่ายรายแผนก (Cost Center)</h1><p>คำนวณสดจากงบทดลองที่นำเข้า — ต้องเป็นไฟล์ที่มีคอลัมน์ <b>Department</b> (TB รายแผนก) ระบบจะเก็บมิติแผนกไว้ให้เอง ถ้าไฟล์มีคอลัมน์ <b>CostCenter</b> ต่อจากแผนกด้วย จะกดแผนกเข้าไปดูรายศูนย์ต้นทุนได้อีกชั้น ส่วน <b>Budget</b> นำเข้าแยกเป็นอีกไฟล์ (ระบบบัญชีไม่ได้ส่งงบประมาณมากับงบทดลอง) — ถ้ายังไม่มี Budget หน้านี้จะแสดงเฉพาะ Actual</p></div>
       <input type="file" id="budgetInput" class="sr-only" accept=".csv,.tsv,.txt,.xlsx,.xls" />
+      <input type="file" id="tbInput" class="sr-only" accept=".xlsx,.xls" />
 
       <div id="banner"></div>
 
@@ -53,6 +55,7 @@
 <script src="../engine/rulebook.js"></script>
 <script src="../engine/group-engine.js"></script>
 <script src="store.js"></script>
+<script src="month-import.js"></script>
 <script src="period-picker.js"></script>
 <script src="shell.js"></script>
 <script src="costcenter.js"></script>
