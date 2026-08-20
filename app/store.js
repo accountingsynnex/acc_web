@@ -371,8 +371,24 @@
       };
       this.persist();
     },
-    listPeriods() {
-      return Object.values(this.data.periods).sort((a, b) => a.key < b.key ? 1 : -1);
+    /* A cost-centre import writes periods of its own, keyed with this suffix
+       (see month-import.js). They hold one company's trial balance and no
+       eliminations, so they are the Cost Center page's business and nobody
+       else's — a consolidated statement or a cash-cycle trend built on one
+       would be wrong, not merely partial. Every reader gets them filtered
+       out unless it asks, so a page that forgets to think about them stays
+       correct. */
+    CC_SUFFIX: '-cc',
+    isCostCentrePeriod(key) { return String(key || '').endsWith(this.CC_SUFFIX); },
+
+    /* scope: 'main' (the default) leaves cost-centre periods out, 'cc' is
+       only those, 'all' is everything — for Import, which lists them to be
+       deleted, and Cost Center, which is what they are for. */
+    listPeriods(scope) {
+      const all = Object.values(this.data.periods).sort((a, b) => a.key < b.key ? 1 : -1);
+      if (scope === 'all') return all;
+      const wantCC = scope === 'cc';
+      return all.filter(p => this.isCostCentrePeriod(p.key) === wantCC);
     },
     getPeriod(key) { return this.data.periods[key] || null; },
     removePeriod(key) { delete this.data.periods[key]; this.persist(); },

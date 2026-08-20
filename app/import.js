@@ -512,7 +512,7 @@
   }
 
   function renderPeriods() {
-    const periods = Store.listPeriods();
+    const periods = Store.listPeriods('all');
     renderUsage();
     if (!periods.length) {
       $('periodsTbl').innerHTML = `<tbody><tr><td class="muted" style="padding:14px 16px">ยังไม่มีงวดที่บันทึกไว้</td></tr></tbody>`;
@@ -537,7 +537,7 @@
   $('clearAllBtn').onclick = () => {
     const u = Store.usage();
     if (!confirm(`ล้างข้อมูลทั้งหมดในเบราว์เซอร์นี้ (${MB(u.bytes)})?\n\n`
-      + `จะหายทั้งหมด: งบทดลองงวดปัจจุบัน · งวดที่บันทึกไว้ ${Store.listPeriods().length} งวด · รายการตัดบัญชี · ผังบัญชีที่แก้เอง · Budget\n\n`
+      + `จะหายทั้งหมด: งบทดลองงวดปัจจุบัน · งวดที่บันทึกไว้ ${Store.listPeriods('all').length} งวด · รายการตัดบัญชี · ผังบัญชีที่แก้เอง · Budget\n\n`
       + 'กู้คืนไม่ได้ — ถ้ายังไม่ได้สำรองรายการตัดบัญชี/ผังบัญชีเป็นไฟล์ ให้กดยกเลิกแล้วไปสำรองก่อน')) return;
     if (!confirm('ยืนยันอีกครั้ง — ล้างทุกอย่างเลยใช่ไหม?')) return;
     Store.clearAll();
@@ -559,7 +559,7 @@
   // feed Ratios' SET-tab TTM feature the same quarter a year ago, without
   // ever touching the current close.
   function renderPeriodSwitcher() {
-    const periods = Store.listPeriods();
+    const periods = Store.listPeriods('all');
     const opts = periods.map(p => `<option value="${esc(p.key)}">${esc(p.label)}</option>`).join('');
     $('periodSwitcher').innerHTML = `<option value="">งวดปัจจุบัน (กำลังทำงาน)</option>${opts}<option value="__new__">+ สร้างงวดใหม่…</option>`;
     $('periodSwitcher').value = activePeriod;

@@ -65,8 +65,8 @@
      numbers. Every month calculation on the Ratios page matches a bare
      "YYYY-MM" only, which is what keeps a suffixed period out of the
      statements entirely. */
-  const CC_SUFFIX = '-cc';
   function planFor(months) {
+    const CC_SUFFIX = Store.CC_SUFFIX;
     return months.map(m => ({
       sheet: m.sheet,
       key: m.key + CC_SUFFIX,
@@ -109,6 +109,6 @@
       + (skipped.length ? `\n\nข้าม: ${skipped.join(', ')}` : '')
     : `นำเข้าไม่สำเร็จ: ${skipped.join(', ')}`;
 
-  global.MonthTB = { CC_SUFFIX, TH_MONTHS, periodKeyFromSheetName, labelFromKey, monthSheetsOf, guessEntity, planFor, confirmText, run, resultText };
+  global.MonthTB = { TH_MONTHS, periodKeyFromSheetName, labelFromKey, monthSheetsOf, guessEntity, planFor, confirmText, run, resultText };
   if (typeof module !== 'undefined') module.exports = global.MonthTB;
 })(typeof window !== 'undefined' ? window : globalThis);

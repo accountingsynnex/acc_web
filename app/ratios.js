@@ -51,6 +51,22 @@
   // 2026-06" placeholder there) — the month is right there in the key, so
   // both the quarter resolver below and the trend loop further down read it
   // the same way, rather than guessing from a separately-typed label.
+  /* Which points the trend series shows. 'month' is every saved period;
+     'qy' keeps only the quarter-ends and labels them the way the company's
+     own comparison charts do — Q1/Q2/Q3 for March/June/September, and the
+     YEAR for December, since a December period's cumulative figures ARE the
+     full year and a "Q4" column beside a "2025" one would be the same
+     numbers twice. Fewer columns also brings back the value labels on the
+     marks, which are dropped past thirteen of them. */
+  let trendGroup = 'month';
+  function quarterLabel(key) {
+    const m = /^(\d{4})-(\d{2})$/.exec(String(key || ''));
+    if (!m) return null;
+    const mo = +m[2], yy = m[1].slice(2);
+    if (mo === 12) return m[1];
+    return mo === 3 ? `Q1-${yy}` : mo === 6 ? `Q2-${yy}` : mo === 9 ? `Q3-${yy}` : null;
+  }
+
   const monthsFromKey = key => {
     const m = /^\d{4}-(\d{2})$/.exec(String(key || ''));
     const n = m ? +m[1] : NaN;
@@ -746,12 +762,18 @@
     // custom label, from before that convention) falls back to the shared
     // toggle, same as before this existed.
     const trendList = [];
+    let groupedOut = 0;
     for (const p of saved) {
+      // In quarter mode a period that isn't a quarter-end is left out, as is
+      // one whose key can't be read as a month at all — counted so the note
+      // below can say how many the view is hiding.
+      const qLabel = trendGroup === 'qy' ? quarterLabel(p.key) : null;
+      if (trendGroup === 'qy' && !qLabel) { groupedOut++; continue; }
       const prows = Store.finalRows(p.key);
       const pg = prows && prows.length ? FS.grouped(prows) : null;
       if (!pg) continue;
       const pMonths = monthsFromKey(p.key);
-      trendList.push({ label: p.label, bs: FS.buildBS(pg), pl: FS.buildPL(pg), months: pMonths, monthsGuessed: pMonths == null });
+      trendList.push({ label: qLabel || p.label, bs: FS.buildBS(pg), pl: FS.buildPL(pg), months: pMonths, monthsGuessed: pMonths == null });
     }
     // "ปัจจุบัน" is always the live TB specifically (not whichever period the
     // top cards above resolved to) — omitted outright when there's no live
@@ -777,8 +799,10 @@
       const monthsNote = document.querySelector(`[data-panel="${tabKey}"] [data-trend-months-note]`);
       if (monthsNote) {
         const guessedLabels = trendList.filter(p => p.monthsGuessed && p.label !== 'ปัจจุบัน').map(p => p.label);
-        monthsNote.style.display = hasEnough && guessedLabels.length ? '' : 'none';
-        if (guessedLabels.length) {
+        monthsNote.style.display = hasEnough && (guessedLabels.length || groupedOut) ? '' : 'none';
+        if (!guessedLabels.length && groupedOut) {
+          monthsNote.innerHTML = `แสดงเฉพาะงวดสิ้นไตรมาส — ซ่อนไป <b>${groupedOut}</b> งวด (ธ.ค. แสดงเป็นทั้งปี เพราะงบสะสมถึง ธ.ค. คือ 12 เดือนอยู่แล้ว) กด <b>รายเดือน</b> เพื่อดูครบทุกงวด`;
+        } else if (guessedLabels.length) {
           monthsNote.innerHTML = `⚠ งวด <b>${esc(guessedLabels.join(', '))}</b> ไม่ได้ตั้งรหัสงวดเป็น <code>YYYY-MM</code> (เช่น 2026-06) เดาจำนวนเดือนไม่ได้ จึงใช้ตัวคูณเดียวกับปุ่ม Q1–Q4 ด้านบนแทน — อาจคลาดเคลื่อนถ้างวดนั้นไม่ได้ครอบคลุมพอดีตามที่ปุ่มเลือกไว้`;
         }
       }
@@ -880,6 +904,13 @@
     const t = Store.cycleTargets();
     document.querySelectorAll('[data-kri]').forEach(el => { el.value = t[el.dataset.kri] == null ? '' : t[el.dataset.kri]; });
   }
+  // One shared setting across the three tabs, like the KRI boxes above.
+  document.querySelectorAll('[data-trend-group] button').forEach(b => b.onclick = () => {
+    trendGroup = b.dataset.group;
+    document.querySelectorAll('[data-trend-group] button').forEach(x => x.classList.toggle('on', x.dataset.group === trendGroup));
+    render();
+  });
+
   document.querySelectorAll('[data-kri]').forEach(el => el.onchange = () => {
     const t = Object.assign({}, Store.cycleTargets());
     const v = parseFloat(el.value);

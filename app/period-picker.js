@@ -13,8 +13,12 @@
   const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const wrap = mount.closest('.selectish') || mount;
 
+  // Cost Center is the one page cost-centre periods belong to, so it lists
+  // them alongside the ordinary ones; everywhere else they stay out of sight.
+  const scope = document.body.dataset.page === 'costcenter' ? 'all' : 'main';
+
   function paint() {
-    const periods = Store.listPeriods();
+    const periods = Store.listPeriods(scope);
     let current = Store.uiPeriod();
     if (current && !periods.some(p => p.key === current)) {
       // The period this was left on got deleted (e.g. from Import's list) —
