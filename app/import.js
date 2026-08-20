@@ -128,6 +128,14 @@
     if (!confirm(MonthTB.confirmText(entityCode, plan))) return;
     const result = MonthTB.run(entityCode, file.name, wb, plan);
     alert(MonthTB.resultText(entityCode, result));
+    // These months land on periods of their own, none of them the one the
+    // page is pointed at — so without moving there the page looks exactly as
+    // it did before, which reads as an import that did nothing. Switch to the
+    // last month written, and the slots and grouping below show it.
+    if (result.added.length) {
+      activePeriod = plan[plan.length - 1].key;
+      renderPeriodSwitcher();
+    }
     renderAll();
   }
 
