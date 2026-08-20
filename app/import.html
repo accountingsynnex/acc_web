@@ -29,6 +29,14 @@
         <p>โยนไฟล์ Workpaper งบรวมทั้งไฟล์ (.xlsx) ไฟล์เดียว ระบบแยก TB รายบริษัทให้เอง — หรือใส่ทีละบริษัทเป็น CSV ก็ได้ จากนั้นจับคู่รหัสกับ Rulebook แล้วจัด statement / section / group อัตโนมัติ คุณตรวจเฉพาะรหัสใหม่ที่ยังไม่เคยเจอเท่านั้น</p>
       </div>
 
+      <div class="panel" style="padding:14px 17px;margin-bottom:20px">
+        <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">
+          <div id="usageBar" style="flex:1;min-width:260px"></div>
+          <button class="linkish" id="clearAllBtn" style="text-decoration:none;color:var(--bad);flex:none">ล้างข้อมูลทั้งหมด</button>
+        </div>
+        <div class="muted" style="font-size:12px;margin-top:9px">ทุกอย่างเก็บอยู่ในเบราว์เซอร์เครื่องนี้เท่านั้น ไม่ได้ส่งขึ้นเซิร์ฟเวอร์ — ถ้าพื้นที่เต็มจะนำเข้าเพิ่มไม่ได้ ให้ลบงวดที่ไม่ได้ใช้ออกที่ตาราง "งวดที่บันทึกไว้" ด้านล่าง · ปุ่มล้างจะลบงบทดลอง · งวดที่บันทึกไว้ · รายการตัดบัญชี · ผังบัญชีที่แก้เอง · Budget ทั้งหมด กู้คืนไม่ได้</div>
+      </div>
+
       <section>
         <h2 class="sec">นำเข้าไฟล์</h2>
         <div class="fld" style="max-width:320px;margin-bottom:12px">
@@ -88,18 +96,6 @@
             <button class="btn" id="archiveBtn">บันทึกงวดนี้</button>
           </div>
           <div class="tbl-wrap" style="margin-top:14px"><table id="periodsTbl"></table></div>
-        </div>
-      </section>
-
-      <section>
-        <h2 class="sec">พื้นที่เก็บข้อมูลในเบราว์เซอร์</h2>
-        <p class="muted" style="margin:-6px 0 14px;font-size:12.5px">ทุกอย่างเก็บอยู่ในเบราว์เซอร์เครื่องนี้เท่านั้น ไม่ได้ส่งขึ้นเซิร์ฟเวอร์ — เบราว์เซอร์ให้พื้นที่ราว 5 MB ต่อเว็บหนึ่งเว็บ ถ้าเต็มจะนำเข้าเพิ่มไม่ได้ ให้ลบงวดที่ไม่ได้ใช้ออกก่อน</p>
-        <div class="panel" style="padding:16px 17px">
-          <div id="usageBar"></div>
-          <div style="display:flex;gap:12px;align-items:center;margin-top:14px;flex-wrap:wrap">
-            <button class="linkish" id="clearAllBtn" style="text-decoration:none;color:var(--bad)">ล้างข้อมูลทั้งหมดในเบราว์เซอร์</button>
-            <span class="muted" style="font-size:12px">ลบงบทดลอง · งวดที่บันทึกไว้ · รายการตัดบัญชี · ผังบัญชีที่แก้เอง · Budget — กู้คืนไม่ได้</span>
-          </div>
         </div>
       </section>
     </div>
