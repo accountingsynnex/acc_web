@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>FS Close Workspace — นำเข้างบทดลอง</title>
-<link rel="stylesheet" href="styles.css?v=2026-08-23.3" />
+<link rel="stylesheet" href="styles.css?v=2026-08-23.4" />
 </head>
 <body data-page="import">
 <div class="bg"><i></i></div>
@@ -32,9 +32,12 @@
       <div class="panel" style="padding:14px 17px;margin-bottom:20px">
         <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">
           <div id="usageBar" style="flex:1;min-width:260px"></div>
+          <button class="btn" id="backupBtn" style="flex:none">สำรองข้อมูลทั้งหมด</button>
+          <button class="btn ghost" id="restoreBtn" style="flex:none;background:var(--glass-strong);color:var(--ink);border:1px solid var(--line-strong)">กู้คืนจากไฟล์สำรอง</button>
+          <input type="file" id="restoreInput" class="sr-only" accept=".json" />
           <button class="linkish" id="clearAllBtn" style="text-decoration:none;color:var(--bad);flex:none">ล้างข้อมูลทั้งหมด</button>
         </div>
-        <div class="muted" style="font-size:12px;margin-top:9px">ทุกอย่างเก็บอยู่ในเบราว์เซอร์เครื่องนี้เท่านั้น ไม่ได้ส่งขึ้นเซิร์ฟเวอร์ — ถ้าพื้นที่เต็มจะนำเข้าเพิ่มไม่ได้ ให้ลบงวดที่ไม่ได้ใช้ออกที่ตาราง "งวดที่บันทึกไว้" ด้านล่าง · ปุ่มล้างจะลบงบทดลอง · งวดที่บันทึกไว้ · รายการตัดบัญชี · ผังบัญชีที่แก้เอง · Budget ทั้งหมด กู้คืนไม่ได้</div>
+        <div class="muted" style="font-size:12px;margin-top:9px">ทุกอย่างเก็บอยู่ในเบราว์เซอร์เครื่องนี้เท่านั้น ไม่ได้ส่งขึ้นเซิร์ฟเวอร์ — ถ้าพื้นที่เต็มจะนำเข้าเพิ่มไม่ได้ ให้ลบงวดที่ไม่ได้ใช้ออกที่ตาราง "งวดที่บันทึกไว้" ด้านล่าง · <b>สำรองข้อมูลทั้งหมด</b> จะได้ไฟล์ .json ไฟล์เดียวที่มีทุกอย่าง (งบทดลองทุกงวด · รายการตัดบัญชี · ผังบัญชีที่แก้เอง · Budget) เก็บไว้กับ workpaper ของเดือนนั้นได้เลย แล้ว<b>กู้คืน</b>ได้ทั้งในเครื่องนี้และเครื่องอื่น — ปุ่มล้างจะลบทุกอย่างที่กล่าวมา และกู้คืนไม่ได้ถ้าไม่มีไฟล์สำรอง</div>
       </div>
 
       <section>
@@ -103,12 +106,12 @@
 </div>
 
 <script src="vendor/xlsx.full.min.js"></script>
-<script src="../engine/rulebook.js?v=2026-08-23.3"></script>
-<script src="../engine/group-engine.js?v=2026-08-23.3"></script>
-<script src="store.js?v=2026-08-23.3"></script>
-<script src="month-import.js?v=2026-08-23.3"></script>
-<script src="samples.js?v=2026-08-23.3"></script>
-<script src="shell.js?v=2026-08-23.3"></script>
-<script src="import.js?v=2026-08-23.3"></script>
+<script src="../engine/rulebook.js?v=2026-08-23.4"></script>
+<script src="../engine/group-engine.js?v=2026-08-23.4"></script>
+<script src="store.js?v=2026-08-23.4"></script>
+<script src="month-import.js?v=2026-08-23.4"></script>
+<script src="samples.js?v=2026-08-23.4"></script>
+<script src="shell.js?v=2026-08-23.4"></script>
+<script src="import.js?v=2026-08-23.4"></script>
 </body>
 </html>

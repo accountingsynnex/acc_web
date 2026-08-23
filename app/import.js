@@ -534,6 +534,55 @@
     });
   }
 
+  /* Backup and restore of the whole workspace. The one file that means a
+     cleared browser or a new machine isn't a lost close — see
+     Store.exportAll/importAll for why the per-period statement exports
+     don't cover this. */
+  $('backupBtn').onclick = () => {
+    const payload = Store.exportAll();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(payload)], { type: 'application/json' }));
+    a.download = `FS_Workspace_Backup_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click(); URL.revokeObjectURL(a.href);
+  };
+
+  $('restoreBtn').onclick = () => $('restoreInput').click();
+  $('restoreInput').onchange = e => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      let payload;
+      try { payload = JSON.parse(reader.result); }
+      catch (err) { alert('อ่านไฟล์ไม่ได้: ' + err.message); return; }
+      const inPeriods = Object.keys((payload && payload.data && payload.data.periods) || {}).length;
+      const have = Store.listPeriods('all').length;
+      const saved = payload && payload.savedAt ? new Date(payload.savedAt).toLocaleString('th-TH') : '—';
+      // Replacing is what "restore" normally means, so it's the default —
+      // but a browser that already holds periods gets the choice, since
+      // wiping this month's work to recover last month's would be a bad
+      // trade to make silently.
+      let merge = false;
+      if (have) {
+        const answer = confirm(`ไฟล์สำรองนี้บันทึกเมื่อ ${saved} มี ${inPeriods} งวด\n\n`
+          + `เบราว์เซอร์นี้มีอยู่แล้ว ${have} งวด\n\n`
+          + 'กด "ตกลง" = เพิ่มเฉพาะงวดที่ยังไม่มี (ของเดิมไม่หาย)\n'
+          + 'กด "ยกเลิก" = จะถามต่อว่าจะทับทั้งหมดหรือไม่');
+        if (answer) merge = true;
+        else if (!confirm('ทับข้อมูลทั้งหมดในเบราว์เซอร์นี้ด้วยไฟล์สำรอง?\n\nของเดิมทั้งหมดจะหาย กู้คืนไม่ได้')) return;
+      }
+      const r = Store.importAll(payload, { merge });
+      if (!r.ok) { alert('กู้คืนไม่สำเร็จ: ' + r.error); return; }
+      alert(r.merged
+        ? `กู้คืนแล้ว — เพิ่ม ${r.added.length} งวด${r.added.length ? ' (' + r.added.join(', ') + ')' : ''}`
+          + `${r.kept.length ? `\nข้ามงวดที่มีอยู่แล้ว ${r.kept.length} งวด` : ''}`
+        : `กู้คืนแล้ว — ${r.after.periods} งวด, ${r.after.entities} บริษัท (ไฟล์สำรองเมื่อ ${saved})`);
+      location.reload();
+    };
+    reader.readAsText(file);
+  };
+
   $('clearAllBtn').onclick = () => {
     const u = Store.usage();
     if (!confirm(`ล้างข้อมูลทั้งหมดในเบราว์เซอร์นี้ (${MB(u.bytes)})?\n\n`

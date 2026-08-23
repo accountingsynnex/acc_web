@@ -78,5 +78,39 @@ Store.importJournals({ journals: [{ id: 'R1', lines: [{ code: '9999999', amount:
 ok(Store.journals('2025-06').length === 1 && Store.journals('2025-06')[0].id === 'R1', 'importJournals(payload, periodKey) replaces that period\'s own journals');
 ok(Store.journals().length === beforeLive, 'importJournals into a period leaves the live journal set untouched');
 
+/* 4) exportAll / importAll — the whole-workspace backup. Everything lives in
+   one browser's localStorage, so this round trip is the only thing standing
+   between a cleared browser and a re-imported year. */
+Store.data.mappings['7777777'] = { statement: 'PL', section: 'Revenue', group: 'Test' };
+const backup = JSON.parse(JSON.stringify(Store.exportAll()));      // as it would survive a file
+ok(backup.format === 'fs-close-workspace' && backup.formatVersion === 1, 'export is stamped as a workspace backup');
+ok(backup.periods.includes('2025-06'), 'export lists the periods it carries');
+
+const snapshot = JSON.stringify(Store.data);
+Store.clearAll();
+ok(Store.listPeriods('all').length === 0 && !Store.mappings()['7777777'], 'clearAll really empties the workspace');
+
+const restored = Store.importAll(backup);
+ok(restored.ok && !restored.merged, 'importAll restores by replacing');
+ok(JSON.stringify(Store.data) === snapshot, 'the restored workspace is byte-identical to the backup');
+
+// A file that isn't ours must be refused OUTRIGHT — a half-applied restore
+// over a live close is worse than no restore.
+const guarded = JSON.stringify(Store.data);
+for (const junk of [null, {}, { format: 'something-else', data: {} }, { format: 'fs-close-workspace', formatVersion: 99, data: { tb: {} } }, { format: 'fs-close-workspace', formatVersion: 1, data: { nope: 1 } }]) {
+  const r = Store.importAll(junk);
+  ok(!r.ok && !!r.error, `importAll refuses ${JSON.stringify(junk)?.slice(0, 46)}`);
+}
+ok(JSON.stringify(Store.data) === guarded, 'a refused restore leaves the workspace exactly as it was');
+
+// Merge keeps what this browser already has and adds only what it lacks.
+const twoPeriods = JSON.parse(JSON.stringify(Store.exportAll()));
+twoPeriods.data.periods['2025-03'] = { key: '2025-03', label: 'Mar', savedAt: '', tb: {}, journals: [] };
+twoPeriods.data.periods['2025-06'] = Object.assign({}, twoPeriods.data.periods['2025-06'], { label: 'OVERWRITTEN' });
+const merged = Store.importAll(twoPeriods, { merge: true });
+ok(merged.ok && merged.merged, 'importAll merges when asked');
+ok(merged.added.includes('2025-03') && merged.kept.includes('2025-06'), 'merge adds the missing period and keeps the existing one');
+ok(Store.getPeriod('2025-06').label !== 'OVERWRITTEN', 'merge does not overwrite a period this browser already holds');
+
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
 process.exit(failures ? 1 : 0);
