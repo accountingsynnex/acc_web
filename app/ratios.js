@@ -181,6 +181,27 @@
     .concat([[LI, CLB, 'Other payable'], [LI, CLB, 'Deposit received']])
     .concat(neg(BASE.prepaid));
 
+  // The groups computeTabMetrics reads directly rather than through a spec.
+  const CASH_GROUPS = ['Cash in Hand', 'Cash at Bank - current account', 'Cash at Bank - saving accounts', 'Short-term investments'];
+  const PREPAY_GROUP = 'Prepayment';
+
+  /* Every group this page looks up by name, checked against the names the
+     grouping engine can actually produce (the bundled rulebook plus the
+     user's own mappings, which is exactly how the Mapping page builds its
+     picker). A name that appears in neither can never be matched, so the
+     lookup silently contributes zero and a cash-cycle card reads a
+     confident, wrong "0.0 วัน" — the failure this catches. A group that
+     exists but happens to be empty this period is a real zero and is not
+     reported. */
+  function unreachableGroups() {
+    const known = new Set();
+    Object.values(RULEBOOK.rules || {}).forEach(r => r && known.add(r.group));
+    Object.values(Store.mappings() || {}).forEach(r => r && known.add(r.group));
+    const wanted = new Set(CASH_GROUPS.concat(PREPAY_GROUP));
+    for (const spec of Object.values(BASE)) for (const [, , group] of spec) wanted.add(group);
+    return [...wanted].filter(g => !known.has(g)).sort();
+  }
+
   function sumSpec(bs, spec) {
     if (!bs) return null;
     let total = 0;
@@ -277,8 +298,14 @@
     { group: 'โครงสร้างเงินทุน (Financial Policy)', key: 'interestCoverage', label: 'Interest Coverage Ratio', unit: 'x' },
   ];
 
-  function card(rk, value, unit, formula) {
-    return `<div class="ratio-card"><div class="rk">${rk}</div><div class="rv">${fmt(value, unit)}</div><div class="rf">${formula}</div></div>`;
+  /* The badge exists for one reason: SET annualizes ROA/ROE/Asset Turnover
+     and the other two tabs don't, each per its own sourced formula. At Q2
+     that lands SET at exactly twice the others, card beside card, which
+     reads as a data error unless the card itself says which basis it is on.
+     Only those three carry one; everything else passes no badge. */
+  function card(rk, value, unit, formula, badge) {
+    const b = badge ? `<span class="rk-badge">${esc(badge)}</span>` : '';
+    return `<div class="ratio-card"><div class="rk">${rk}${b}</div><div class="rv">${fmt(value, unit)}</div><div class="rf">${formula}</div></div>`;
   }
   function cycleCard(name, value, formula) {
     return `<div class="ratio-card"><div class="rk">${name}</div><div class="rv">${fmt(value, 'days')}</div>
@@ -299,7 +326,7 @@
       const e = m[spec.key] || {};
       html += spec.key === 'ccc' ? cccCard(e.value, e.formula)
         : spec.unit === 'days' ? cycleCard(spec.label, e.value, e.formula)
-        : card(spec.label, e.value, spec.unit, e.formula);
+        : card(spec.label, e.value, spec.unit, e.formula, e.badge);
     }
     $(containerId).innerHTML = html;
   }
@@ -326,11 +353,8 @@
     const arNetCur = sumSpec(mbs, BASE.arNetCur);
     const tradeAP = sumSpec(mbs, BASE.apTrade);
     const otherReceivable = sumSpec(mbs, BASE.otherRecv);
-    const cashEquiv = groupIn(mbs.assets, 'Current Assets', 'Cash in Hand')
-      + groupIn(mbs.assets, 'Current Assets', 'Cash at Bank - current account')
-      + groupIn(mbs.assets, 'Current Assets', 'Cash at Bank - saving accounts')
-      + groupIn(mbs.assets, 'Current Assets', 'Short-term investments');
-    const prepayment = groupIn(mbs.assets, 'Current Assets', 'Prepayment');
+    const cashEquiv = CASH_GROUPS.reduce((t, g) => t + groupIn(mbs.assets, CUR, g), 0);
+    const prepayment = groupIn(mbs.assets, CUR, PREPAY_GROUP);
     const interestExpense = -mpl.finance;
     const ebit = mpl.revenue + mpl.cogs + mpl.opEx + mpl.otherIE + mpl.share;
 
@@ -390,9 +414,9 @@
         grossMargin: { value: grossMargin, formula: 'กำไรขั้นต้น ÷ รายได้ — ยังไม่พบสูตร Conso เฉพาะ' },
         operatingMargin: { value: operatingMargin, formula: 'กำไรจากการดำเนินงาน ÷ รายได้ — ยังไม่พบสูตร Conso เฉพาะ' },
         netMargin: { value: netMargin, formula: 'กำไรสุทธิ ÷ รายได้ — ยังไม่พบสูตร Conso เฉพาะ' },
-        roa: { value: mbs.totalAssets ? 100 * mbs.netProfit / mbs.totalAssets : null, formula: 'กำไรสุทธิ ÷ สินทรัพย์รวม (ยอดปลายงวด) ✓ ตรงกับสูตร Conso จริง' },
-        roe: { value: equity ? 100 * mbs.netProfit / equity : null, formula: 'กำไรสุทธิ ÷ ส่วนของผู้ถือหุ้น (ยอดปลายงวด) — ยังไม่พบสูตร Conso เฉพาะ' },
-        assetTurnover: { value: mbs.totalAssets ? mpl.revenue / mbs.totalAssets : null, formula: 'รายได้ (YTD) ÷ สินทรัพย์รวม (ยอดปลายงวด) — ยังไม่ทำเป็นรายปี, ยังไม่พบสูตร Conso เฉพาะ' },
+        roa: { badge: `ยอดสะสม ${months} เดือน · ไม่ปรับรายปี`, value: mbs.totalAssets ? 100 * mbs.netProfit / mbs.totalAssets : null, formula: 'กำไรสุทธิ ÷ สินทรัพย์รวม (ยอดปลายงวด) ✓ ตรงกับสูตร Conso จริง' },
+        roe: { badge: `ยอดสะสม ${months} เดือน · ไม่ปรับรายปี`, value: equity ? 100 * mbs.netProfit / equity : null, formula: 'กำไรสุทธิ ÷ ส่วนของผู้ถือหุ้น (ยอดปลายงวด) — ยังไม่พบสูตร Conso เฉพาะ' },
+        assetTurnover: { badge: `ยอดสะสม ${months} เดือน · ไม่ปรับรายปี`, value: mbs.totalAssets ? mpl.revenue / mbs.totalAssets : null, formula: 'รายได้ (YTD) ÷ สินทรัพย์รวม (ยอดปลายงวด) — ยังไม่ทำเป็นรายปี, ยังไม่พบสูตร Conso เฉพาะ' },
         de: { value: de, formula: 'หนี้สินรวม ÷ ส่วนของผู้ถือหุ้น ✓ ตรงกับสูตร Conso จริง' },
         interestCoverage: { value: interestCoverage, formula: `EBIT ${M(ebit)} ÷ ดอกเบี้ยจ่าย ${M(interestExpense)} ✓ ตรงกับสูตร Conso จริง` },
       };
@@ -449,9 +473,9 @@
         grossMargin: { value: grossMargin, formula: 'กำไรขั้นต้น ÷ รายได้ (เหมือนวิธีบริษัท — ชีท KPI ใช้สูตรเดียวกัน)' },
         operatingMargin: { value: operatingMargin, formula: 'กำไรจากการดำเนินงาน ÷ รายได้ (เหมือนวิธีบริษัท — ชีท KPI ใช้สูตรเดียวกัน)' },
         netMargin: { value: netMargin, formula: 'กำไรสุทธิ ÷ รายได้ — ยังไม่พบสูตรไต้หวันแยกในไฟล์' },
-        roa: { value: mbs.totalAssets ? 100 * mbs.netProfit / mbs.totalAssets : null, formula: 'กำไรสุทธิ ÷ สินทรัพย์รวม (ยอดปลายงวด) — ยังไม่พบสูตรไต้หวันแยกในไฟล์' },
-        roe: { value: avgEquity ? 100 * mbs.netProfit / avgEquity : null, formula: `กำไรสุทธิ ÷ ส่วนของผู้ถือหุ้นเฉลี่ย ${M(avgEquity)} ✓ สูตรจริงจากชีท NROIC — ${avgNote}` },
-        assetTurnover: { value: mbs.totalAssets ? mpl.revenue / mbs.totalAssets : null, formula: 'รายได้ (YTD) ÷ สินทรัพย์รวม (ยอดปลายงวด) — ยังไม่พบสูตรไต้หวันแยกในไฟล์' },
+        roa: { badge: `ยอดสะสม ${months} เดือน · ไม่ปรับรายปี`, value: mbs.totalAssets ? 100 * mbs.netProfit / mbs.totalAssets : null, formula: 'กำไรสุทธิ ÷ สินทรัพย์รวม (ยอดปลายงวด) — ยังไม่พบสูตรไต้หวันแยกในไฟล์' },
+        roe: { badge: `ยอดสะสม ${months} เดือน · ไม่ปรับรายปี`, value: avgEquity ? 100 * mbs.netProfit / avgEquity : null, formula: `กำไรสุทธิ ÷ ส่วนของผู้ถือหุ้นเฉลี่ย ${M(avgEquity)} ✓ สูตรจริงจากชีท NROIC — ${avgNote}` },
+        assetTurnover: { badge: `ยอดสะสม ${months} เดือน · ไม่ปรับรายปี`, value: mbs.totalAssets ? mpl.revenue / mbs.totalAssets : null, formula: 'รายได้ (YTD) ÷ สินทรัพย์รวม (ยอดปลายงวด) — ยังไม่พบสูตรไต้หวันแยกในไฟล์' },
         de: { value: de, formula: 'หนี้สินรวม ÷ ส่วนของผู้ถือหุ้น — ยังไม่พบสูตรไต้หวันแยกในไฟล์' },
         interestCoverage: { value: interestCoverage, formula: `EBIT ${M(ebit)} ÷ ดอกเบี้ยจ่าย ${M(interestExpense)} — ยังไม่พบสูตรไต้หวันแยกในไฟล์` },
       };
@@ -495,9 +519,9 @@
       grossMargin: { value: grossMargin, formula: 'กำไรขั้นต้น ÷ รายได้ (เหมือนวิธีบริษัท)' },
       operatingMargin: { value: operatingMargin, formula: 'กำไรจากการดำเนินงาน ÷ รายได้ (เหมือนวิธีบริษัท)' },
       netMargin: { value: netMargin, formula: 'กำไรสุทธิ ÷ รายได้ (เหมือนวิธีบริษัท)' },
-      roa: { value: avgAssets ? 100 * ebit * annualizeFactor / avgAssets : null, formula: `EBIT${ytdNote} ÷ สินทรัพย์รวมเฉลี่ย ${M(avgAssets)} ✓ สูตรจริงจาก SET — ${avgNote}` },
-      roe: { value: avgEquity ? 100 * mbs.netProfit * annualizeFactor / avgEquity : null, formula: `กำไรสุทธิ${ytdNote} ÷ ส่วนของผู้ถือหุ้นเฉลี่ย ${M(avgEquity)} ✓ สูตรจริงจาก SET — ${avgNote}` },
-      assetTurnover: { value: avgAssets ? mpl.revenue * annualizeFactor / avgAssets : null, formula: `รายได้${ytdNote} ÷ สินทรัพย์รวมเฉลี่ย ${M(avgAssets)} ✓ สูตรจริงจาก SET — ${avgNote}` },
+      roa: { badge: annualizeFactor > 1 ? `ปรับเป็นรายปี ×${annualizeFactor.toFixed(2)}` : 'เต็มปีแล้ว · ไม่ต้องปรับ', value: avgAssets ? 100 * ebit * annualizeFactor / avgAssets : null, formula: `EBIT${ytdNote} ÷ สินทรัพย์รวมเฉลี่ย ${M(avgAssets)} ✓ สูตรจริงจาก SET — ${avgNote}` },
+      roe: { badge: annualizeFactor > 1 ? `ปรับเป็นรายปี ×${annualizeFactor.toFixed(2)}` : 'เต็มปีแล้ว · ไม่ต้องปรับ', value: avgEquity ? 100 * mbs.netProfit * annualizeFactor / avgEquity : null, formula: `กำไรสุทธิ${ytdNote} ÷ ส่วนของผู้ถือหุ้นเฉลี่ย ${M(avgEquity)} ✓ สูตรจริงจาก SET — ${avgNote}` },
+      assetTurnover: { badge: annualizeFactor > 1 ? `ปรับเป็นรายปี ×${annualizeFactor.toFixed(2)}` : 'เต็มปีแล้ว · ไม่ต้องปรับ', value: avgAssets ? mpl.revenue * annualizeFactor / avgAssets : null, formula: `รายได้${ytdNote} ÷ สินทรัพย์รวมเฉลี่ย ${M(avgAssets)} ✓ สูตรจริงจาก SET — ${avgNote}` },
       de: { value: de, formula: 'หนี้สินรวม ÷ ส่วนของผู้ถือหุ้น (เหมือนวิธีบริษัท)' },
       interestCoverage: { value: interestCoverage, formula: `EBIT ${M(ebit)} ÷ ดอกเบี้ยจ่าย ${M(interestExpense)} (เหมือนวิธีบริษัท)` },
     };
@@ -721,14 +745,37 @@
     const liveG = FS.grouped();
     const liveBs = liveG ? FS.buildBS(liveG) : null, livePl = liveG ? FS.buildPL(liveG) : null;
 
-    const openingBSOf = key => {
+    /* What "the opening balance" means for anything this page averages.
+
+       Two problems with reading the imported file's own opening column,
+       both of which put the average on a different footing from the closing
+       side it is averaged with:
+
+       - it is built from the combining rows, BEFORE eliminations, while the
+         closing position is after them, so intercompany balances inflate
+         the opening side only;
+       - it is the PRIOR MONTH, not the start of the period. Against a
+         six-month flow that is a one-month average — nearly the ending
+         balance, with none of the smoothing it claims.
+
+       So when the period that actually starts this one is archived, that
+       period's own final (post-elimination) balance sheet is used instead:
+       same basis on both sides, and a real period average. The file's
+       opening column stays as the fallback, and the note says which of the
+       two is in play rather than calling both "ต้นงวด". */
+    const openingBSOf = (key, months) => {
+      const startKey = key && months ? shiftMonthKey(key, -months) : null;
+      const fromPeriod = startKey ? bsAt(startKey) : null;
+      if (fromPeriod) return { bs: fromPeriod, source: 'period', key: startKey };
       const rows = Store.openingRows(key);
       const g2 = rows ? FS.grouped(rows) : null;
-      return g2 ? FS.buildBS(g2) : null;
+      return g2 ? { bs: FS.buildBS(g2), source: 'file' } : { bs: null };
     };
-    const avgNoteFor = openingBS => openingBS
-      ? `ยอดเฉลี่ยต้นงวด+ปลายงวด (ยอดยกมาจากไฟล์ที่นำเข้า: ${M(openingBS.totalAssets)})`
-      : '⚠ ไฟล์ที่นำเข้าไม่มีคอลัมน์ยอดยกมา (Opening balance) ใช้ยอดปลายงวดแทนค่าเฉลี่ย';
+    const avgNoteFor = (o, months) => o.source === 'period'
+      ? `ยอดเฉลี่ยต้นงวด+ปลายงวด — ต้นงวดใช้งบที่บันทึกไว้ของงวด ${esc(o.key)} (หลังตัดรายการระหว่างกัน ฐานเดียวกับยอดปลายงวด, ครอบคลุม ${months} เดือนพอดี): ${M(o.bs.totalAssets)}`
+      : o.bs
+        ? `⚠ ยอดเฉลี่ยใช้คอลัมน์ยอดยกมาในไฟล์ (${M(o.bs.totalAssets)}) ซึ่งเป็นยอด<b>สิ้นเดือนก่อนหน้า</b> และเป็นยอด<b>ก่อน</b>ตัดรายการระหว่างกัน คนละฐานกับยอดปลายงวด — บันทึกงวดต้นงวดไว้ด้วยจะได้ค่าเฉลี่ยที่ถูกต้อง`
+        : '⚠ ไฟล์ที่นำเข้าไม่มีคอลัมน์ยอดยกมา (Opening balance) ใช้ยอดปลายงวดแทนค่าเฉลี่ย';
 
     let cards = null;
     if (q.archived) {
@@ -736,12 +783,13 @@
         const prows = Store.finalRows(q.key);
         const pg = prows && prows.length ? FS.grouped(prows) : null;
         if (pg) {
-          const openingBS = openingBSOf(q.key);
           const periodMonths = monthsFromKey(q.key) || periodOpt().months;
+          const opening = openingBSOf(q.key, periodMonths);
+          const openingBS = opening.bs;
           const ttmRevenue = ttmFlow(q.key, 'revenue'), ttmCogs = ttmFlow(q.key, 'cogs');
           const qRevenue = quarterFlow(q.key, 'revenue'), qCogs = quarterFlow(q.key, 'cogs');
           cards = {
-            bs: FS.buildBS(pg), pl: FS.buildPL(pg), openingBS, avgNote: avgNoteFor(openingBS),
+            bs: FS.buildBS(pg), pl: FS.buildPL(pg), openingBS, avgNote: avgNoteFor(opening, periodMonths),
             periodMonths, periodLabel: `${periodOpt().label} · ${q.period.label}`,
             ttm: (ttmRevenue != null && ttmCogs != null) ? { revenue: ttmRevenue, cogs: ttmCogs } : null,
             twFlow: (qRevenue != null && qCogs != null) ? { revenue: qRevenue, cogs: qCogs } : null,
@@ -750,8 +798,10 @@
         }
       }
     } else if (liveG) {
-      const openingBS = openingBSOf();
-      cards = { bs: liveBs, pl: livePl, openingBS, avgNote: avgNoteFor(openingBS), periodMonths: periodOpt().months, periodLabel: periodOpt().label };
+      // No period key for the live TB, so there is no archived start to
+      // read — the file's own opening column is all there is.
+      const opening = openingBSOf();
+      cards = { bs: liveBs, pl: livePl, openingBS: opening.bs, avgNote: avgNoteFor(opening, periodOpt().months), periodMonths: periodOpt().months, periodLabel: periodOpt().label };
     }
     const trendDefaultMonths = cards ? cards.periodMonths : periodOpt().months;
 
@@ -779,7 +829,12 @@
       renderTabCards('th', computeTabMetrics('th', bs, pl, null, { periodMonths, periodLabel, ttm, thAvg }));
       renderTabCards('tw', computeTabMetrics('tw', bs, pl, openingBS, { periodMonths, periodLabel, avgNote, twFlow, twAvg }));
       renderTabCards('set', computeTabMetrics('set', bs, pl, openingBS, { annualizeFactor, ytdNote, avgNote, periodMonths, periodLabel, ttm }));
-      $('banner').innerHTML = `<div class="check ok" style="margin-bottom:14px"><div class="ico">✓</div><div><div class="t">${q.archived ? `คำนวณจากงวดที่บันทึกไว้ <b>${esc(q.period.label)}</b>` : 'คำนวณจากงบที่โรลอัปสด'}</div>
+      const missingGroups = unreachableGroups();
+      const warn = missingGroups.length
+        ? `<div class="check no" style="margin-bottom:14px"><div class="ico">!</div><div><div class="t">มีกลุ่มบัญชีที่หน้านี้ใช้คำนวณแต่ไม่มีอยู่ในผังบัญชี</div>
+          <div class="d">อัตราส่วนที่อ้างถึงกลุ่มเหล่านี้จะนับเป็น 0 โดยไม่มีการเตือนในการ์ด — ไปเปลี่ยนชื่อกลุ่มให้ตรงหรือ map บัญชีเข้ากลุ่มนี้ที่หน้า <a class="linkish" href="mapping.html">Mapping</a>: <b>${esc(missingGroups.join(' · '))}</b></div></div></div>`
+        : '';
+      $('banner').innerHTML = warn + `<div class="check ok" style="margin-bottom:14px"><div class="ico">✓</div><div><div class="t">${q.archived ? `คำนวณจากงวดที่บันทึกไว้ <b>${esc(q.period.label)}</b>` : 'คำนวณจากงบที่โรลอัปสด'}</div>
         <div class="d">DSCR และ LT Debt/EBITDA ต้องใช้ตารางกระแสเงินสด/เงินกู้ — ดูหน้า <a class="linkish" href="cashflow.html">Cash Flow</a></div></div></div>`;
     }
 
