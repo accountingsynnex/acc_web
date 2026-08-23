@@ -150,35 +150,47 @@
      lowest. A number over every column is the anti-pattern this panel used to
      have: nineteen of them collide, so nobody reads any. The axis carries the
      rest, and the tooltip and the table under the charts carry all of it. */
+  /* A number on every bar. That is a lot of ink at nineteen periods, so
+     rather than dropping most of them (which leaves the reader guessing at
+     the ones in between) the labels turn on their side once the columns get
+     narrower than a horizontal number needs — every bar keeps its value and
+     nothing overlaps. Haloed either way, since the dashed target rule can
+     pass straight through where a label sits. */
   const valueLabels = {
     id: 'cycleValueLabels',
     afterDatasetsDraw(chart, _a, opts) {
-      const { ctx } = chart;
+      const { ctx, chartArea } = chart;
       const ds = chart.data.datasets[0];
       if (!ds || ds.noLabels) return;
       const meta = chart.getDatasetMeta(0);
       if (meta.hidden) return;
       const vals = ds.data.map((v, i) => ({ v, i })).filter(x => x.v != null);
       if (!vals.length) return;
-      const keep = new Set([
-        vals[vals.length - 1].i,
-        vals.reduce((a, b) => b.v > a.v ? b : a).i,
-        vals.reduce((a, b) => b.v < a.v ? b : a).i,
-      ]);
       ctx.save();
-      ctx.font = '650 10.5px ' + cssVar('--sans');
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
+      const size = opts.rotate ? 9.5 : 10.5;
+      ctx.font = `650 ${size}px ` + cssVar('--sans');
+      const slot = chartArea.width / Math.max(1, ds.data.length);
+      const widest = Math.max(...vals.map(x => ctx.measureText(x.v.toFixed(0)).width));
+      const rotate = opts.rotate && widest + 3 > slot;
+      ctx.lineWidth = 3.5; ctx.lineJoin = 'round';
       for (const { v, i } of vals) {
-        if (!keep.has(i)) continue;
         const el = meta.data[i];
-        const txt = v.toFixed(0);
-        // Haloed above the cap: the target rule can pass right through here.
-        ctx.lineWidth = 3.5; ctx.lineJoin = 'round';
+        if (!el) continue;
+        const label = v.toFixed(0);
+        ctx.save();
+        if (rotate) {
+          ctx.translate(el.x, el.y - 5);
+          ctx.rotate(-Math.PI / 2);
+          ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        } else {
+          ctx.translate(el.x, el.y - 6);
+          ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+        }
         ctx.strokeStyle = opts.halo;
-        ctx.strokeText(txt, el.x, el.y - 6);
+        ctx.strokeText(label, 0, 0);
         ctx.fillStyle = opts.ink;
-        ctx.fillText(txt, el.x, el.y - 6);
+        ctx.fillText(label, 0, 0);
+        ctx.restore();
       }
       ctx.restore();
     },
@@ -225,6 +237,7 @@
     const ink = cssVar('--ink'), muted = cssVar('--muted'), line = cssVar('--line'), faint = cssVar('--faint');
     const halo = cssVar('--chart-halo'), warn = cssVar('--warn');
     const hasTarget = cfg.target != null && isFinite(cfg.target);
+    const dense = cfg.labels.length > 10;
     // A point whose real formula couldn't be computed (the months it needs
     // aren't archived) is drawn washed out and says so in its tooltip. The
     // series would otherwise mix two methods with nothing to show where it
@@ -256,9 +269,11 @@
         interaction: { mode: 'index', intersect: false },
         // Right gutter: the target rule's own label lives out there, clear of
         // the newest column.
-        layout: { padding: { top: 22, right: hasTarget ? 44 : 6 } },
+        // Room above the bars for the value labels — more when they stand on
+        // end, which is how a dense series keeps one on every bar.
+        layout: { padding: { top: dense ? 34 : 22, right: hasTarget ? 44 : 6 } },
         plugins: {
-          cycleValueLabels: { ink, halo },
+          cycleValueLabels: { ink, halo, rotate: dense },
           cycleTargetLabel: { value: hasTarget ? cfg.target : null, color: warn, halo },
           title: { display: true, text: cfg.title, color: ink, font: { size: 12.5, weight: '600' } },
           // Left-aligned and given its own clearance: right-aligned it landed
