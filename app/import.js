@@ -199,6 +199,19 @@
   // name varies (see elimSheetName below), so it's found separately.
   const AJE_SHEETS = ['AJE+RJE-Synnex', 'AJE+RJE-SVP', 'AJE+RJE-SWOPMART', 'AJE+RJE-Audit'];
 
+  /* How far into a sheet the reader goes on the first pass. See sheetAoa()
+     for why there is a cap at all and how a longer sheet gets read anyway. */
+  const READ_CAP = 5000;
+
+  /* What the last import actually did, per file and per sheet, kept on the
+     page instead of in a dialog that disappears. An import that half-worked
+     is the normal case with these workbooks — one company's sheet is a
+     different report that month, a journal sheet holds working notes, a
+     filename carries no period — and "why didn't it import?" is only
+     answerable if the reasons are still on screen. */
+  let diag = [];
+  const diagLine = (kind, text, extra) => diag.push(Object.assign({ kind, text }, extra || {}));
+
   // Hyphens/underscores count as the same separator as a space. The
   // company's own workbook varies this across months/eras — "TB SYN" some
   // months, "TB-SYN" others — for a sheet that is otherwise identical.
@@ -228,7 +241,7 @@
   // time rather than all at once.
   function ingestWorkbook(file, notify = alert) {
     return new Promise(resolve => {
-    if (typeof XLSX === 'undefined') { notify('ตัวอ่าน Excel ยังไม่พร้อม'); resolve(); return; }
+    if (typeof XLSX === 'undefined') { notify('ตัวอ่าน Excel ยังไม่พร้อม'); diagLine('bad', 'ตัวอ่าน Excel (vendor/xlsx) โหลดไม่สำเร็จ'); renderDiag(); resolve(); return; }
     $('wbDrop').classList.add('busy');
     $('wbDrop').classList.remove('loaded');       // the previous file's receipt is about to be replaced
     $('wbRemove').hidden = true;
@@ -236,7 +249,7 @@
     $('wbT').textContent = 'กำลังอ่านและแยกไฟล์…';
     $('wbD').textContent = file.name;
     const reader = new FileReader();
-    reader.onerror = () => { notify('อ่านไฟล์ไม่ได้'); resetWbDrop(); resolve(); };
+    reader.onerror = () => { notify('อ่านไฟล์ไม่ได้'); diagLine('bad', `${file.name}: เบราว์เซอร์อ่านไฟล์ไม่ได้ (ไฟล์เสียหรือถูกล็อกอยู่)`); renderDiag(); resetWbDrop(); resolve(); };
     reader.onload = () => setTimeout(() => {          // yield so the "reading" state paints first
       try {
         // Parse only the entity TB + journal sheets and cap rows — the workbook
@@ -270,24 +283,61 @@
           .concat(Object.values(deptVariant).filter(Boolean))
           .concat(journalSheetNames);
         const readOpts = {
-          type: 'array', sheetRows: 5000,
+          type: 'array', sheetRows: READ_CAP,
           cellStyles: false, cellFormula: false, cellHTML: false, cellNF: false, bookVBA: false,
         };
         if (wanted.length) readOpts.sheets = wanted;   // restrict only once something was actually found
         const wb = XLSX.read(new Uint8Array(reader.result), readOpts);
 
+        /* The row cap above is not optional: TB SYN reports content across
+           Excel's whole 1,048,576-row range, and reading it uncapped takes
+           24 seconds against 5 for the cap. But a cap that silently cuts a
+           long sheet is worse than a slow import — a department-level trial
+           balance can genuinely run past 5,000 rows and the missing accounts
+           would just be absent, balancing and all.
+
+           So: if the parsed window ENDS in rows that still look like account
+           lines, the sheet is read again with a larger cap, up to twice. The
+           cost is only paid when the data really is that long, and if it is
+           still running at the last cap the import says so instead of
+           pretending it read everything. */
+        const looksLikeAccountRow = row => (row || []).some(c => {
+          const t = String(c == null ? '' : c).trim();
+          return t.length >= 4 && t.length <= 20 && /\d/.test(t) && /^[0-9A-Za-z][0-9A-Za-z\-. ]*$/.test(t);
+        });
+        const sheetAoa = name => {
+          let cap = READ_CAP, aoa = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: null });
+          for (let attempt = 0; attempt < 2 && aoa.length >= cap && aoa.slice(-120).some(looksLikeAccountRow); attempt++) {
+            cap *= 8;
+            const bigger = XLSX.read(new Uint8Array(reader.result), Object.assign({}, readOpts, { sheets: [name], sheetRows: cap }));
+            aoa = XLSX.utils.sheet_to_json(bigger.Sheets[name], { header: 1, raw: true, defval: null });
+            diag.push({ kind: 'info', sheet: name, text: `ชีตยาวเกิน ${(cap / 8).toLocaleString()} แถว — อ่านซ้ำถึง ${cap.toLocaleString()} แถว` });
+          }
+          if (aoa.length >= cap && aoa.slice(-120).some(looksLikeAccountRow)) {
+            diag.push({ kind: 'warn', sheet: name, text: `⚠ ชีตนี้ยาวเกิน ${cap.toLocaleString()} แถว — อ่านได้เท่านี้ ยอดหลังจากนั้นยังไม่ถูกนำเข้า` });
+          }
+          return aoa;
+        };
+
         const added = [], skipped = [];
         let deptSheet = '';
+        diagLine('head', `ไฟล์ ${file.name} — ${names.length} ชีต · หาชีตที่ต้องใช้ได้ ${wanted.length} ชีต`);
         for (const ent of ENTITIES) {
           const sheetName = entitySheet[ent.code];
-          if (!sheetName) { skipped.push(`${ent.code} (ไม่พบชีต TB ในไฟล์นี้)`); continue; }
+          if (!sheetName) {
+            skipped.push(`${ent.code} (ไม่พบชีต TB ในไฟล์นี้)`);
+            diagLine('warn', `${ent.code}: ไม่พบชีตชื่อ "TB ${ent.code}"`
+              + ((ENTITY_SHEET_ALIASES[ent.code] || []).length ? ` หรือ "TB ${ENTITY_SHEET_ALIASES[ent.code][0]}"` : '')
+              + ` — ขีด/ขีดล่าง/ช่องว่างนับเหมือนกัน แต่ชื่ออื่นระบบยังไม่รู้จัก`);
+            continue;
+          }
           // A company's own sheet is occasionally not a trial balance at all
           // — seen in a real file where "TB SWOP" held an unrelated income-
           // statement report for one month. That must not sink the other
           // three companies or the journals below, so it's isolated here and
           // reported once at the end instead of aborting the whole import.
           try {
-            const read = n => buildRows(XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: null }));
+            const read = n => buildRows(sheetAoa(n));
             const { rows, deptRows, dimNames } = read(sheetName);
             let dept = deptRows, deptSource = deptRows.length ? sheetName : '', dims = dimNames;
             if (!dept.length && deptVariant[ent.code]) {
@@ -298,17 +348,29 @@
               Store.setTB(ent.code, file.name + ' › ' + sheetName, rows, activePeriod, dept, deptSource, dims);
               added.push(ent.code);
               if (deptSource && !deptSheet) deptSheet = deptSource;
+              const net = rows.reduce((t, r) => t + r.closing, 0);
+              diagLine('ok', `${ent.code}: อ่านจากชีต "${sheetName}" ได้ ${rows.length.toLocaleString()} บัญชี`
+                + (Math.abs(net) > 5 ? ` · ⚠ เดบิต−เครดิต = ${Math.round(net).toLocaleString()} (ไม่สมดุล)` : ' · สมดุล')
+                + (deptSource ? ` · มีมิติหน่วยงานจาก "${deptSource}"` : ''));
             } else {
               skipped.push(`${ent.code} (ชีต "${sheetName}" ไม่มีแถวบัญชี)`);
+              diagLine('warn', `${ent.code}: ชีต "${sheetName}" มีอยู่ แต่ไม่มีแถวบัญชีที่อ่านได้ — ชีตนั้นอาจเป็นรายงานอื่นในเดือนนี้`);
             }
           } catch (e) {
             skipped.push(`${ent.code} (ชีต "${sheetName}": ${e.message})`);
+            diagLine('bad', `${ent.code}: อ่านชีต "${sheetName}" ไม่ได้ — ${e.message}`);
           }
         }
         // Held until the journal sheets have been read too, so one dialog
         // carries everything this file did rather than two in a row.
         let entityNote = '';
-        if (!added.length) entityNote = 'ไม่พบชีต TB รายบริษัท (TB SYN / TB SVP / TB SYNIN / TB SWOP) ในไฟล์นี้';
+        if (!added.length) {
+          entityNote = 'ไม่พบชีต TB รายบริษัท (TB SYN / TB SVP / TB SYNIN / TB SWOP) ในไฟล์นี้';
+          // Nothing came in at all, so say that plainly and show what the
+          // file does hold — the sheet names are usually the whole answer.
+          diagLine('bad', 'ไม่มีบริษัทใดถูกนำเข้าจากไฟล์นี้');
+          diagLine('info', `ชีตที่มีในไฟล์: ${names.slice(0, 10).join(' · ')}${names.length > 10 ? ` … และอีก ${names.length - 10} ชีต` : ''}`);
+        }
         else if (skipped.length) entityNote = `นำเข้าได้ ${added.length} บริษัท แต่ข้าม: ${skipped.join(', ')}`;
         let journalNote = '';
 
@@ -321,9 +383,12 @@
         // knows — the older template's supporting notes. Collected so the
         // import can say what it left out instead of dropping it silently.
         const skippedLines = [];
+        if (!journalSheetNames.length) {
+          diagLine('warn', 'ไม่พบชีตรายการตัดบัญชี/ปรับปรุง (Eliminate / Elimiate / RECORD / AJE+RJE-*) — ยอดที่ได้จะเป็นยอดก่อนตัดรายการ');
+        }
         for (const sheetName of journalSheetNames) {
           try {
-            const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, raw: true, defval: null });
+            const aoa = sheetAoa(sheetName);
             journals = journals.concat(parseJournals(aoa, sheetName, {
               knownCode: code => !!(RULEBOOK.rules[code] || Store.mappings()[code]),
               skipped: skippedLines,
@@ -331,6 +396,12 @@
           } catch (e) { /* one bad journal sheet shouldn't drop the rest */ }
         }
         Store.setJournals(journals, journalSheetNames, activePeriod);
+        for (const sheetName of journalSheetNames) {
+          const n = journals.filter(j => j.source === sheetName).length;
+          const net = journals.filter(j => j.source === sheetName).reduce((t, j) => t + j.net, 0);
+          diagLine(n ? 'ok' : 'warn', `รายการปรับปรุง "${sheetName}": ${n} รายการ`
+            + (n ? (Math.abs(net) <= 1 ? ' · ยอดรวมเป็นศูนย์' : ` · ⚠ ยอดรวม ${Math.round(net).toLocaleString()} ไม่เป็นศูนย์`) : ' — อ่านไม่ได้: ไม่พบคอลัมน์รหัสบัญชีหรือคอลัมน์จำนวนเงินในชีตนี้'));
+        }
         if (skippedLines.length) {
           const byCode = new Map();
           for (const x of skippedLines) byCode.set(x.code, (byCode.get(x.code) || 0) + x.amount);
@@ -354,7 +425,11 @@
             journalSources: journalSheetNames,
           });
         }
-      } catch (e) { notify('อ่านไฟล์ Excel ไม่ได้: ' + e.message); }
+      } catch (e) {
+        notify('อ่านไฟล์ Excel ไม่ได้: ' + e.message);
+        diagLine('bad', `${file.name}: อ่านเป็น Excel ไม่ได้ — ${e.message} (ไฟล์เสีย ใส่รหัสผ่าน หรือไม่ใช่ .xlsx/.xls)`);
+      }
+      renderDiag();
       resetWbDrop(); renderAll();
       resolve();
     }, 30);
@@ -377,11 +452,16 @@
     $('periodSwitcher').disabled = true;
     const prevActive = activePeriod;
     const notes = skippedNonXlsx ? [`ข้ามไฟล์ที่ไม่ใช่ .xlsx ${skippedNonXlsx} ไฟล์`] : [];
+    if (skippedNonXlsx) diagLine('warn', `ข้ามไฟล์ที่ไม่ใช่ .xlsx ${skippedNonXlsx} ไฟล์`);
     let recognized = 0;
     try {
       for (const file of files) {
         const key = periodKeyFromFilename(file.name);
-        if (!key) { notes.push(`"${file.name}" — แยกรหัสงวด (ปี-เดือน) จากชื่อไฟล์ไม่ได้ ข้ามไฟล์นี้`); continue; }
+        if (!key) {
+          notes.push(`"${file.name}" — แยกรหัสงวด (ปี-เดือน) จากชื่อไฟล์ไม่ได้ ข้ามไฟล์นี้`);
+          diagLine('bad', `${file.name}: อ่านปี-เดือนจากชื่อไฟล์ไม่ได้ จึงไม่รู้ว่าจะลงงวดไหน — ชื่อไฟล์ต้องมีรูปแบบเช่น 2026062026, 2026-06 หรือ 202606`);
+          continue;
+        }
         if (!Store.getPeriod(key)) { Store.tbFor(key); Store.setPeriodLabel(key, labelFromKey(key)); }
         activePeriod = key;
         recognized++;
@@ -404,9 +484,15 @@
   function handleWorkbookFiles(fileList) {
     const files = Array.from(fileList || []);
     if (!files.length) return;
+    diag = [];                                   // this drop's own log
     if (files.length === 1) { ingestWorkbook(files[0]); return; }
     const xlsxFiles = files.filter(isXlsx);
-    if (!xlsxFiles.length) { alert('ไม่พบไฟล์ .xlsx ในไฟล์ที่เลือก'); return; }
+    if (!xlsxFiles.length) {
+      alert('ไม่พบไฟล์ .xlsx ในไฟล์ที่เลือก');
+      diagLine('bad', `เลือกมา ${files.length} ไฟล์ แต่ไม่มีไฟล์ .xlsx/.xls เลย — ${files.slice(0, 3).map(f => f.name).join(' · ')}`);
+      renderDiag();
+      return;
+    }
     ingestWorkbooksBatch(xlsxFiles, files.length - xlsxFiles.length);
   }
 
@@ -447,6 +533,47 @@
 
   const tile = (k, v, s, cls = '', meter) =>
     `<div class="tile ${cls}"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div>${meter != null ? `<div class="meter"><span style="width:${meter}%"></span></div>` : ''}</div>`;
+
+  /* The last import's log, on the page. Colour follows what it means: a
+     line that stopped something (bad), one that changed what was imported
+     (warn), one that just says what happened (ok/info). Every entry names
+     the sheet or file it is about, because "ไม่พบชีต TB" without saying which
+     name it looked for is the same dead end as no message at all. */
+  const DIAG_STYLE = {
+    bad: { ico: '✕', color: 'var(--bad)' },
+    warn: { ico: '!', color: 'var(--warn)' },
+    ok: { ico: '✓', color: 'var(--good)' },
+    info: { ico: 'i', color: 'var(--faint)' },
+    head: { ico: '', color: 'var(--ink)' },
+  };
+  function renderDiag() {
+    const box = $('importLog');
+    if (!box) return;
+    if (!diag.length) { box.innerHTML = ''; box.style.display = 'none'; return; }
+    box.style.display = '';
+    const worst = diag.some(d => d.kind === 'bad') ? 'bad' : diag.some(d => d.kind === 'warn') ? 'warn' : 'ok';
+    const nothing = diag.some(d => d.kind === 'bad' && d.text.startsWith('ไม่มีบริษัทใด'));
+    const title = nothing ? 'นำเข้าไม่ได้เลย' : worst === 'bad' ? 'มีบางอย่างนำเข้าไม่ได้'
+      : worst === 'warn' ? 'นำเข้าแล้ว แต่มีบางส่วนถูกข้าม' : 'นำเข้าครบทุกส่วน';
+    box.innerHTML = `<div class="panel" style="padding:13px 16px;margin-bottom:18px;border-color:${DIAG_STYLE[worst].color}">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <b style="color:${DIAG_STYLE[worst].color}">${DIAG_STYLE[worst].ico} ${esc(title)}</b>
+        <span class="muted" style="font-size:12px">ผลการอ่านไฟล์ล่าสุด</span>
+        <div class="spacer" style="margin-left:auto"></div>
+        <button class="linkish" id="diagClose" style="text-decoration:none">ปิด</button>
+      </div>
+      ${diag.map(d => {
+        const st = DIAG_STYLE[d.kind] || DIAG_STYLE.info;
+        return d.kind === 'head'
+          ? `<div style="font-size:12.5px;font-weight:650;margin:8px 0 4px">${esc(d.text)}</div>`
+          : `<div style="font-size:12.5px;line-height:1.75;display:flex;gap:8px">
+               <span style="color:${st.color};flex:none;width:12px">${st.ico}</span>
+               <span>${esc(d.text)}</span></div>`;
+      }).join('')}
+    </div>`;
+    const close = $('diagClose');
+    if (close) close.onclick = () => { diag = []; renderDiag(); };
+  }
 
   function renderAll() {
     renderWorkbook();
@@ -566,12 +693,30 @@
     const file = e.target.files[0];
     e.target.value = '';
     if (!file) return;
+    // Reading a workbook takes seconds for one of ours and the better part
+    // of a minute for a 25 MB workpaper dropped here by mistake. Say so,
+    // rather than looking dead until the alert.
+    const btn = $('reimportBtn'), label = btn.textContent;
+    btn.disabled = true; btn.textContent = 'กำลังอ่านไฟล์…';
+    diag = [];
     let parsed;
     try {
       const wb = XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: 'array', cellDates: false });
       parsed = ConsoExport.parse(wb, file.name);
-    } catch (err) { alert('อ่านไฟล์ไม่ได้: ' + err.message); return; }
-    if (!parsed.ok) { alert(parsed.error); return; }
+    } catch (err) {
+      alert('อ่านไฟล์ไม่ได้: ' + err.message);
+      diagLine('bad', `${file.name}: อ่านเป็น Excel ไม่ได้ — ${err.message} (ไฟล์เสีย ใส่รหัสผ่าน หรือไม่ใช่ .xlsx)`);
+      renderDiag();
+      return;
+    } finally { btn.disabled = false; btn.textContent = label; }
+    if (!parsed.ok) {
+      alert(parsed.error);
+      diagLine('bad', `${file.name}: ${parsed.error.split('\n')[0]}`);
+      (parsed.error.split('\n').slice(1).filter(Boolean)).forEach(x => diagLine('info', x.trim()));
+      renderDiag();
+      return;
+    }
+    (parsed.warnings || []).forEach(w => diagLine('warn', w));
 
     const c = parsed.counts;
     // Where it lands: the period the file says it came from, else whichever
@@ -607,6 +752,11 @@
     const r = ConsoExport.restore(parsed, { periodKey: target, applyOverrides });
     activePeriod = target;
     renderPeriods(); renderPeriodSwitcher(); renderAll();
+    diagLine('head', `ไฟล์ ${file.name} — นำกลับเข้างวด ${targetLabel}`);
+    for (const [code, ent] of Object.entries(parsed.entities)) diagLine('ok', `${code}: ${ent.rows.length.toLocaleString()} บัญชี`);
+    for (const src of c.journalSources) diagLine('ok', `รายการปรับปรุง "${src}": ${parsed.journals.filter(j => j.source === src).length} รายการ`);
+    if (c.overrides) diagLine(r.applied ? 'ok' : 'info', `ผังบัญชีที่ไฟล์ระบุต่างจากในเว็บ ${c.overrides} บัญชี — ${r.applied ? `แก้ตามไฟล์แล้ว ${r.applied} บัญชี` : 'ไม่ได้แก้'}`);
+    renderDiag();
     alert(`นำเข้าจากไฟล์ Excel แล้ว — งวด ${targetLabel}\n\n`
       + `งบทดลอง ${c.entities} บริษัท · รายการตัดบัญชี ${c.journals} รายการ`
       + (r.applied ? `\nแก้ผังบัญชีตามไฟล์ ${r.applied} บัญชี` : (c.overrides ? '\n(ไม่ได้แก้ผังบัญชี)' : '')));
