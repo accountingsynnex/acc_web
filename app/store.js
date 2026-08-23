@@ -164,7 +164,15 @@
     /* Cost-centre budget: {"<code> <dept>": amount} plus a dept-only
        fallback {" <dept>": amount}. Imported as its own file — no
        accounting system exports budget alongside actuals. */
-    setBudget(map, fileName) { this.data.budget = { fileName, map, savedAt: new Date().toISOString() }; this.persist(); },
+    setBudget(rec, fileName) {
+      // `rec` is what parseBudget returned: the detail rows (account ×
+      // department × cost centre), the (account, department) rollup earlier
+      // versions stored under `map`, and the budget year. Kept whole so the
+      // cost-centre view has a line of its own to compare against; a record
+      // saved by an older build carries only `map` and still reads.
+      this.data.budget = Object.assign({ fileName, savedAt: new Date().toISOString() }, rec && rec.rows ? rec : { map: rec });
+      this.persist();
+    },
     budget() { return this.data.budget || null; },
     clearBudget() { delete this.data.budget; this.persist(); },
 
