@@ -393,8 +393,25 @@ function applyRulebook(rows, rulebook, overrides = {}) {
    Description | Account code | Account name | Dr./(Cr.) | NO. Each NO. groups
    the double-entry lines of one journal. Returns:
    [{ id, description, source, lines:[{code, name, amount}], net }]. */
-function parseJournals(matrix, source) {
+function parseJournals(matrix, source, opts) {
   if (!matrix || !matrix.length) return [];
+  /* What counts as an account to post to. The older template keeps its
+     journal entries on one working sheet ("RECORD", "Elimiate + RJE")
+     alongside the notes that support them — share counts, subtotals,
+     sub-schedules by caption. Those sit in the same columns as the entries,
+     so a filter that accepts any word swept them in: one file booked "Total
+     shares of NCAP" 1,350,000,000 as a journal line, and the sheet came out
+     1.35 billion out of balance.
+
+     A line is a line when it posts somewhere real: a code with a digit in it
+     (every account code in this chart of accounts has one, including the
+     suffixed variants like 1291000A), or a name the chart of accounts
+     already knows — which is how the deliberate pseudo-codes the
+     consolidation uses (NCI - BS, SF-NCAP, OCI-NCAP) stay in. Anything else
+     is a working note, and is reported to the caller rather than dropped in
+     silence: mapping it on the Mapping page is what makes it a line. */
+  const knownCode = (opts && opts.knownCode) || (() => false);
+  const skipped = (opts && opts.skipped) || [];
   // A raw Excel day-serial (no cellDates) or an already-parsed Date — the
   // same test buildRows/parseStatementReport use to spot a date-headed
   // column, needed below for one era of the amount column too.
@@ -441,6 +458,10 @@ function parseJournals(matrix, source) {
     if (get(col.desc)) lastDesc = get(col.desc);
     if (!code || !isFinite(amount) || amount === 0 && !code) continue;
     if (!/^[0-9A-Za-z][0-9A-Za-z\- ]{1,}$/.test(code)) continue;   // skip blanks / notes
+    if (!/\d/.test(code) && !knownCode(code)) {
+      if (amount) skipped.push({ code, amount, source });
+      continue;
+    }
     const no = id || '(' + source + ')';
     // Prefix with source: the "NO." label (e.g. "CAJE#1") is only unique
     // within its own sheet — the real workpaper reuses the same NO. across

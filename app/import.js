@@ -305,21 +305,43 @@
             skipped.push(`${ent.code} (ชีต "${sheetName}": ${e.message})`);
           }
         }
-        if (!added.length) notify('ไม่พบชีต TB รายบริษัท (TB SYN / TB SVP / TB SYNIN / TB SWOP) ในไฟล์นี้');
-        else if (skipped.length) notify(`นำเข้าได้ ${added.length} บริษัท แต่ข้าม: ${skipped.join(', ')}`);
+        // Held until the journal sheets have been read too, so one dialog
+        // carries everything this file did rather than two in a row.
+        let entityNote = '';
+        if (!added.length) entityNote = 'ไม่พบชีต TB รายบริษัท (TB SYN / TB SVP / TB SYNIN / TB SWOP) ในไฟล์นี้';
+        else if (skipped.length) entityNote = `นำเข้าได้ ${added.length} บริษัท แต่ข้าม: ${skipped.join(', ')}`;
+        let journalNote = '';
 
         // An archived period gets its own Eliminate/AJE sheets read the same
         // way the live close does — its journals live alongside its tb
         // (Store.journalsFor), so Ratios' trend can show that period's real
         // consolidated position instead of a raw pre-elimination combine.
         let journals = [];
+        // Rows on a journal sheet that post to nothing the chart of accounts
+        // knows — the older template's supporting notes. Collected so the
+        // import can say what it left out instead of dropping it silently.
+        const skippedLines = [];
         for (const sheetName of journalSheetNames) {
           try {
             const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, raw: true, defval: null });
-            journals = journals.concat(parseJournals(aoa, sheetName));
+            journals = journals.concat(parseJournals(aoa, sheetName, {
+              knownCode: code => !!(RULEBOOK.rules[code] || Store.mappings()[code]),
+              skipped: skippedLines,
+            }));
           } catch (e) { /* one bad journal sheet shouldn't drop the rest */ }
         }
         Store.setJournals(journals, journalSheetNames, activePeriod);
+        if (skippedLines.length) {
+          const byCode = new Map();
+          for (const x of skippedLines) byCode.set(x.code, (byCode.get(x.code) || 0) + x.amount);
+          const top = [...byCode.entries()].sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+          journalNote = `\n\nข้ามบรรทัดในชีตรายการปรับปรุงที่ไม่ได้ลงบัญชีจริง ${byCode.size} รายการ`
+            + ` (เป็นบันทึกช่วยจำ/ยอดรวมในชีตเดียวกัน): `
+            + top.slice(0, 4).map(([code, amt]) => `"${code}" ${Math.round(amt).toLocaleString()}`).join(' · ')
+            + (top.length > 4 ? ` และอีก ${top.length - 4} รายการ` : '')
+            + '\n\nถ้าบรรทัดใดควรลงบัญชีจริง ให้จับคู่รหัสนั้นที่หน้า Mapping แล้วนำเข้าไฟล์อีกครั้ง';
+        }
+        if (entityNote || journalNote) notify((entityNote || `นำเข้า ${added.length} บริษัทแล้ว`) + journalNote);
 
         // Remember the file itself, not just its rows, so the drop zone can
         // report "already imported" on the next visit and undo it in one click.
