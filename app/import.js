@@ -534,53 +534,60 @@
     });
   }
 
-  /* Backup and restore of the whole workspace. The one file that means a
-     cleared browser or a new machine isn't a lost close — see
-     Store.exportAll/importAll for why the per-period statement exports
-     don't cover this. */
-  $('backupBtn').onclick = () => {
-    const payload = Store.exportAll();
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([JSON.stringify(payload)], { type: 'application/json' }));
-    a.download = `FS_Workspace_Backup_${new Date().toISOString().slice(0, 10)}.json`;
-    a.click(); URL.revokeObjectURL(a.href);
-  };
-
-  $('restoreBtn').onclick = () => $('restoreInput').click();
-  $('restoreInput').onchange = e => {
+  /* The exported Excel workbook, coming back. See ConsoExport.parse for why
+     only the TB and journal sheets are read: they are the input the rest of
+     the file is computed from, so a number changed there flows into every
+     statement, while a number typed over a statement total would just
+     contradict them. */
+  $('reimportBtn').onclick = () => $('reimportInput').click();
+  $('reimportInput').onchange = async e => {
     const file = e.target.files[0];
     e.target.value = '';
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      let payload;
-      try { payload = JSON.parse(reader.result); }
-      catch (err) { alert('อ่านไฟล์ไม่ได้: ' + err.message); return; }
-      const inPeriods = Object.keys((payload && payload.data && payload.data.periods) || {}).length;
-      const have = Store.listPeriods('all').length;
-      const saved = payload && payload.savedAt ? new Date(payload.savedAt).toLocaleString('th-TH') : '—';
-      // Replacing is what "restore" normally means, so it's the default —
-      // but a browser that already holds periods gets the choice, since
-      // wiping this month's work to recover last month's would be a bad
-      // trade to make silently.
-      let merge = false;
-      if (have) {
-        const answer = confirm(`ไฟล์สำรองนี้บันทึกเมื่อ ${saved} มี ${inPeriods} งวด\n\n`
-          + `เบราว์เซอร์นี้มีอยู่แล้ว ${have} งวด\n\n`
-          + 'กด "ตกลง" = เพิ่มเฉพาะงวดที่ยังไม่มี (ของเดิมไม่หาย)\n'
-          + 'กด "ยกเลิก" = จะถามต่อว่าจะทับทั้งหมดหรือไม่');
-        if (answer) merge = true;
-        else if (!confirm('ทับข้อมูลทั้งหมดในเบราว์เซอร์นี้ด้วยไฟล์สำรอง?\n\nของเดิมทั้งหมดจะหาย กู้คืนไม่ได้')) return;
-      }
-      const r = Store.importAll(payload, { merge });
-      if (!r.ok) { alert('กู้คืนไม่สำเร็จ: ' + r.error); return; }
-      alert(r.merged
-        ? `กู้คืนแล้ว — เพิ่ม ${r.added.length} งวด${r.added.length ? ' (' + r.added.join(', ') + ')' : ''}`
-          + `${r.kept.length ? `\nข้ามงวดที่มีอยู่แล้ว ${r.kept.length} งวด` : ''}`
-        : `กู้คืนแล้ว — ${r.after.periods} งวด, ${r.after.entities} บริษัท (ไฟล์สำรองเมื่อ ${saved})`);
-      location.reload();
-    };
-    reader.readAsText(file);
+    let parsed;
+    try {
+      const wb = XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: 'array', cellDates: false });
+      parsed = ConsoExport.parse(wb, file.name);
+    } catch (err) { alert('อ่านไฟล์ไม่ได้: ' + err.message); return; }
+    if (!parsed.ok) { alert(parsed.error); return; }
+
+    const c = parsed.counts;
+    // Where it lands: the period the file says it came from, else whichever
+    // period Import is currently writing into. Named either way, because
+    // overwriting the wrong month is the mistake worth preventing here.
+    const target = parsed.periodKey || activePeriod;
+    const targetLabel = target ? ((Store.getPeriod(target) || {}).label || target) : 'งวดปัจจุบัน';
+    const existing = Store.entitiesLoaded(target);
+    const lines = [
+      `ไฟล์: ${file.name}`,
+      parsed.periodLabel ? `ส่งออกจากงวด: ${parsed.periodLabel}${parsed.periodKey ? ` (${parsed.periodKey})` : ''}` : '',
+      parsed.build ? `เวอร์ชันตอนส่งออก: ${parsed.build}` : '',
+      '',
+      `จะนำเข้า: งบทดลอง ${c.entities} บริษัท (${Object.keys(parsed.entities).join(' · ')}) รวม ${c.rows.toLocaleString()} บรรทัด`,
+      c.journals ? `รายการตัดบัญชี/ปรับปรุง ${c.journals} รายการ จาก ${c.journalSources.length} ชีท (${c.journalSources.join(' · ')})` : 'ไม่มีรายการตัดบัญชีในไฟล์',
+      '',
+      `ลงที่งวด: ${targetLabel}`,
+      existing.length ? `⚠ งวดนี้มีข้อมูลของ ${existing.join(' · ')} อยู่แล้ว — บริษัทที่อยู่ในไฟล์จะถูกเขียนทับ` : '',
+      parsed.warnings.length ? `\nข้าม: ${parsed.warnings.join(' · ')}` : '',
+    ].filter(Boolean);
+    if (!confirm(lines.join('\n'))) return;
+
+    // Retyped groups change every period, not just this one, so they're a
+    // separate question rather than part of the same yes.
+    let applyOverrides = false;
+    if (c.overrides) {
+      const sample = Object.entries(parsed.overrides).slice(0, 6).map(([code, r]) => `   ${code} → ${r.section} / ${r.group}`).join('\n');
+      applyOverrides = confirm(`ในไฟล์มี ${c.overrides} บัญชีที่คอลัมน์ Statement/Section/Group ไม่ตรงกับผังบัญชีในเว็บ:\n\n${sample}`
+        + `${c.overrides > 6 ? `\n   … และอีก ${c.overrides - 6} บัญชี` : ''}\n\n`
+        + 'กด "ตกลง" = แก้ผังบัญชีตามไฟล์ (มีผลกับทุกงวด)\nกด "ยกเลิก" = นำเข้าแต่ยอด ไม่แตะผังบัญชี');
+    }
+
+    const r = ConsoExport.restore(parsed, { periodKey: target, applyOverrides });
+    activePeriod = target;
+    renderPeriods(); renderPeriodSwitcher(); renderAll();
+    alert(`นำเข้าจากไฟล์ Excel แล้ว — งวด ${targetLabel}\n\n`
+      + `งบทดลอง ${c.entities} บริษัท · รายการตัดบัญชี ${c.journals} รายการ`
+      + (r.applied ? `\nแก้ผังบัญชีตามไฟล์ ${r.applied} บัญชี` : (c.overrides ? '\n(ไม่ได้แก้ผังบัญชี)' : '')));
   };
 
   $('clearAllBtn').onclick = () => {

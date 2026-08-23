@@ -534,6 +534,168 @@
     return meta;
   }
 
-  global.ConsoExport = { build, download, collect, entityOfSource };
+
+  /* ---- Reading one back in -------------------------------------------
+
+     The point of exporting into the workpaper's shape is that someone can
+     work in it. So the file comes back: drop the same workbook on Import and
+     the period it came from is rebuilt from it.
+
+     Only the sheets that hold INPUT are read — the trial balance per company
+     and the journal sheets. Conso BS, Conso PL, Cash Flow and the ratios are
+     computed from those, so reading them back would either duplicate what
+     the app recomputes or, if someone typed over a total, contradict it. A
+     figure edited on a statement sheet is therefore ignored; the way to move
+     a number is to edit it on the TB or in a journal entry, which is also
+     the only way that keeps the statements internally consistent.
+
+     One thing beyond the numbers does come back: the Statement / Section /
+     Group columns on each TB sheet. Retyping a group there is the natural
+     way to reclassify an account in Excel, so a value that differs from the
+     rulebook is offered as a chart-of-accounts override — never applied
+     silently, since it changes every period, not just this one. */
+
+  const DERIVED_SHEETS = ['_Export info', 'Conso BS', 'Conso PL', 'Conso PL (month)', 'Cash Flow', 'NFS+Ratio', 'Cost Center'];
+  const cellText = v => (v == null ? '' : String(v).trim());
+  const cellNum = v => {
+    if (v == null || v === '') return null;
+    if (typeof v === 'number') return isFinite(v) ? v : null;
+    const n = parseFloat(String(v).replace(/[,\s]/g, '').replace(/[()]/g, m => (m === '(' ? '-' : '')));
+    return isFinite(n) ? n : null;
+  };
+  const rowsOf = ws => XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+  // Where the table starts, found by its own header text rather than a fixed
+  // row, so an extra title line someone inserted doesn't break the read.
+  function headerRow(aoa, first) {
+    for (let i = 0; i < Math.min(aoa.length, 30); i++) {
+      const row = (aoa[i] || []).map(cellText);
+      if (row.includes(first)) return { i, cols: row };
+    }
+    return null;
+  }
+
+  function parseTbSheet(aoa) {
+    const h = headerRow(aoa, 'รหัสบัญชี');
+    if (!h) return null;
+    const at = name => h.cols.indexOf(name);
+    const ci = { code: at('รหัสบัญชี'), name: at('ชื่อบัญชี'), opening: at('ยอดยกมา'), closing: at('ยอดคงเหลือ'), st: at('Statement'), se: at('Section'), gr: at('Group') };
+    const rows = [], rules = {};
+    for (let i = h.i + 1; i < aoa.length; i++) {
+      const r = aoa[i] || [];
+      const code = cellText(r[ci.code]);
+      if (!code || code === 'รวม') continue;
+      const closing = cellNum(r[ci.closing]);
+      if (closing == null) continue;
+      const name = cellText(r[ci.name]);
+      rows.push({ code, name, closing, opening: ci.opening === -1 ? null : cellNum(r[ci.opening]) });
+      const st = cellText(r[ci.st]), se = cellText(r[ci.se]), gr = cellText(r[ci.gr]);
+      if (st && se && gr && gr !== 'UNMAPPED') rules[code] = { name, statement: st, section: se, group: gr };
+    }
+    return { rows, rules };
+  }
+
+  function parseJournalSheet(sheet, aoa) {
+    const h = headerRow(aoa, 'เลขที่');
+    if (!h) return [];
+    const at = name => h.cols.indexOf(name);
+    const ci = { ref: at('เลขที่'), desc: at('คำอธิบาย'), code: at('รหัสบัญชี'), name: at('ชื่อบัญชี'), dr: at('เดบิต'), cr: at('เครดิต'), net: at('สุทธิ'), on: at('ใช้งาน') };
+    const byRef = new Map();
+    for (let i = h.i + 1; i < aoa.length; i++) {
+      const r = aoa[i] || [];
+      const ref = cellText(r[ci.ref]), code = cellText(r[ci.code]);
+      // The per-entry total line carries no account; it's recomputed anyway.
+      if (!ref || !code) continue;
+      const amount = ci.net !== -1 && cellNum(r[ci.net]) != null
+        ? cellNum(r[ci.net])
+        : (cellNum(r[ci.dr]) || 0) - (cellNum(r[ci.cr]) || 0);
+      if (!amount && amount !== 0) continue;
+      const cur = byRef.get(ref) || { id: `${sheet}::${ref}`, source: sheet, description: cellText(r[ci.desc]), lines: [], enabled: cellText(r[ci.on]) !== 'ปิด' };
+      cur.lines.push({ code, name: cellText(r[ci.name]), amount });
+      if (!cur.description) cur.description = cellText(r[ci.desc]);
+      byRef.set(ref, cur);
+    }
+    return [...byRef.values()].map(j => Object.assign(j, { net: j.lines.reduce((t, l) => t + l.amount, 0) }));
+  }
+
+  /* What an exported workbook holds, or why it can't be read. Never touches
+     the store — the caller shows this first and asks. */
+  function parse(wb, fileName) {
+    const names = wb.SheetNames || [];
+    const info = wb.Sheets['_Export info'];
+    // The cover sheet is what makes a workbook ours. The company's own
+    // workpaper has TB sheets too, under the same names and a different
+    // layout, and telling someone "ไม่พบแถวบัญชี" about it four times over is
+    // no help — the answer is that it goes in the ordinary upload box.
+    if (!info) {
+      return { ok: false, error: 'ไฟล์นี้ไม่ใช่ไฟล์ที่ส่งออกจากโปรแกรมนี้ (ไม่มีชีท "_Export info")\n\n'
+        + 'ถ้าเป็นไฟล์ Conso ต้นฉบับ ให้ใช้ช่อง "อัปโหลด Workpaper ทั้งไฟล์" ด้านล่างแทน — '
+        + 'ปุ่มนี้มีไว้สำหรับไฟล์ที่กดส่งออกจากหน้า Review แล้วเอาไปแก้ใน Excel' };
+    }
+    const entityCodes = RULEBOOK.entities.map(e => e.code);
+    const tbSheets = names.filter(n => /^TB /.test(n) && entityCodes.includes(n.slice(3).trim()));
+    if (!tbSheets.length) return { ok: false, error: 'ไฟล์ส่งออกนี้ไม่มีชีทงบทดลอง (TB SYN / TB SVP / …) ให้นำกลับเข้ามา' };
+    // The period the file came from, read off its own cover sheet.
+    let periodKey = '', periodLabel = '', build = '';
+    {
+      for (const row of rowsOf(info)) {
+        const k = cellText((row || [])[0]), v = cellText((row || [])[1]);
+        if (k === 'รหัสงวด' && !/^\(/.test(v)) periodKey = v;
+        if (k === 'งวด') periodLabel = v;
+        if (k === 'เวอร์ชันโปรแกรม') build = v;
+      }
+    }
+    const entities = {}, rules = {}, warnings = [];
+    for (const sheet of tbSheets) {
+      const code = sheet.slice(3).trim();
+      const parsed = parseTbSheet(rowsOf(wb.Sheets[sheet]));
+      if (!parsed || !parsed.rows.length) { warnings.push(`${sheet}: ไม่พบแถวบัญชี`); continue; }
+      entities[code] = { rows: parsed.rows, fileName: `${fileName} › ${sheet}` };
+      Object.assign(rules, parsed.rules);
+    }
+    if (!Object.keys(entities).length) return { ok: false, error: 'อ่านชีทงบทดลองไม่ได้: ' + warnings.join(' · ') };
+
+    const journalSheets = names.filter(n => !DERIVED_SHEETS.includes(n) && !/^TB /.test(n));
+    let journals = [];
+    for (const sheet of journalSheets) {
+      const js = parseJournalSheet(sheet, rowsOf(wb.Sheets[sheet]));
+      if (js.length) journals = journals.concat(js); else warnings.push(`${sheet}: ไม่พบรายการ`);
+    }
+
+    // Which of the retyped groups actually differ from what the app would
+    // do on its own — the rest are just the export's own output coming back.
+    const current = Object.assign({}, RULEBOOK.rules, Store.mappings());
+    const overrides = {};
+    for (const [code, rule] of Object.entries(rules)) {
+      const now = current[code];
+      if (!now || now.statement !== rule.statement || now.section !== rule.section || now.group !== rule.group) overrides[code] = rule;
+    }
+    return {
+      ok: true, periodKey, periodLabel, build, warnings,
+      entities, journals, overrides,
+      counts: {
+        entities: Object.keys(entities).length,
+        rows: Object.values(entities).reduce((t, e) => t + e.rows.length, 0),
+        journals: journals.length,
+        journalSources: [...new Set(journals.map(j => j.source))],
+        overrides: Object.keys(overrides).length,
+      },
+    };
+  }
+
+  /* Write a parsed workbook into a period. Only the entities and journal
+     sources the file actually carries are replaced, so re-importing a file
+     that holds one company doesn't remove the others, and journals typed by
+     hand on the Journals page survive (setJournals is scoped to the sources
+     passed to it). */
+  function restore(parsed, { periodKey = '', applyOverrides = false } = {}) {
+    for (const [code, e] of Object.entries(parsed.entities)) Store.setTB(code, e.fileName, e.rows, periodKey);
+    const sources = parsed.counts.journalSources;
+    if (sources.length) Store.setJournals(parsed.journals, sources, periodKey);
+    let applied = 0;
+    if (applyOverrides) for (const [code, rule] of Object.entries(parsed.overrides)) { Store.setMapping(code, rule); applied++; }
+    return { periodKey, applied };
+  }
+
+  global.ConsoExport = { build, download, collect, entityOfSource, parse, restore };
   if (typeof module !== 'undefined') module.exports = global.ConsoExport;
 })(typeof window !== 'undefined' ? window : globalThis);
