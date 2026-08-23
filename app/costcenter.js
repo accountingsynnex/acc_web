@@ -82,6 +82,13 @@
     });
   }
 
+  /* A variance cell. Over budget prints red, under budget green — the sign is
+     printed too, so colour is a second cue and never the only one, and a
+     difference under a baht stays uncoloured because it is on plan. */
+  const varCell = v => v == null
+    ? '<td class="r var">—</td>'
+    : `<td class="r var ${v > 0.5 ? 'over' : v < -0.5 ? 'under' : ''}">${v < 0 ? '−' : '+'}${money(Math.abs(v))}</td>`;
+
   function statusChip(variance) {
     if (variance > 0.5) return `<span class="chip bad"><span class="dot"></span>เกิน budget</span>`;
     if (variance < -0.5) return `<span class="chip good"><span class="dot"></span>ต่ำกว่า budget</span>`;
@@ -372,7 +379,7 @@
         : hasCC ? tile('แผนก / ศูนย์ต้นทุน', `${depts.length} / ${new Set(expense.filter(r => r.cc).map(r => r.dept + '|' + r.cc)).size}`, 'จากมิติในไฟล์ที่นำเข้า')
           : tile('จำนวนแผนก', String(depts.length), 'จากมิติแผนกในไฟล์'),
       hasBudget
-        ? tile('ผลต่างรวม', (totalActual - totalBudget < 0 ? '−' : '+') + M(Math.abs(totalActual - totalBudget)), totalActual > totalBudget ? 'ใช้เกิน budget' : 'ใช้ต่ำกว่า budget', totalActual > totalBudget ? 'flag' : '')
+        ? tile('ผลต่างรวม', (totalActual - totalBudget < 0 ? '−' : '+') + M(Math.abs(totalActual - totalBudget)), totalActual > totalBudget ? 'ใช้เกิน budget' : 'ใช้ต่ำกว่า budget', totalActual > totalBudget ? 'over' : 'under')
         : tile('จำนวนบัญชีค่าใช้จ่าย', String(accounts.length), 'ที่มียอดในงวดนี้'),
       hasBudget
         ? tile('แผนกที่เกิน budget', String(overCount), `จาก ${depts.length} แผนก`, overCount ? 'flag' : '')
@@ -395,8 +402,8 @@
         <td class="code">${esc(r.name)}<div class="muted" style="font-size:11px;font-weight:500">Account ${esc(r.code)}</div></td>
         <td class="r">${money(r.actual)}</td>
         ${accountBudgets ? `<td class="r">${money(r.budget)}</td>
-        <td class="r neg">+${money(r.variance)}</td>
-        <td class="r neg">${r.pct == null ? '—' : '+' + r.pct.toFixed(1) + '%'}</td>` : ''}
+        <td class="r var over">+${money(r.variance)}</td>
+        <td class="r var over">${r.pct == null ? '—' : '+' + r.pct.toFixed(1) + '%'}</td>` : ''}
         <td class="r">${pool ? (100 * (accountBudgets ? r.variance : r.actual) / pool).toFixed(1) + '%' : '—'}</td></tr>`).join('')}</tbody>`;
     drawChart('overrunChart', top5.map(r => r.name), top5.map(r => r.actual), accountBudgets ? top5.map(r => r.budget) : null);
 
@@ -413,7 +420,7 @@
         <td class="code">${esc(a.name)}<div class="muted" style="font-size:10.5px;font-weight:500">${esc(a.code)}</div></td>
         <td class="r">${money(a.actual)}</td>
         ${accountBudgets ? `<td class="r">${a.budget == null ? '—' : money(a.budget)}</td>
-        <td class="r ${v != null && v > 0 ? 'neg' : ''}">${v == null ? '—' : (v >= 0 ? '+' : '') + money(v)}</td>` : ''}
+        ${varCell(v)}` : ''}
       </tr>`;
     };
     // Accounts of one department, merged across its cost centres — the view
@@ -449,7 +456,7 @@
             <td class="code">${esc(ccNameOf(d.code, c.code))} <span class="muted" style="font-weight:500">(${esc(c.code)})</span></td>
             <td class="r">${money(c.actual)}</td>
             ${ccBudget ? `<td class="r">${c.hasBudget ? money(c.budget) : '—'}</td>
-            <td class="r ${v != null && v > 0 ? 'neg' : ''}">${v == null ? '—' : (v >= 0 ? '+' : '') + money(v)}</td>` : ''}
+            ${varCell(v)}` : ''}
             <td class="r muted">${pctOfDept.toFixed(1)}%</td>
           </tr>
           <tr class="cc-detail" ${open ? '' : 'hidden'}><td colspan="${cols}"><div class="inner">${acctTable(c.accounts)}</div></td></tr>`;
@@ -478,7 +485,7 @@
           <td class="code">${esc(nameOf(d.code))} <span class="muted" style="font-weight:500">(${esc(d.code)})</span>${d.ccs.size > 1 ? `<div class="muted" style="font-size:11px;font-weight:500">${d.ccs.size} ศูนย์ต้นทุน</div>` : ''}</td>
           <td class="r">${money(d.actual)}</td>
           ${hasBudget ? `<td class="r">${money(d.budget)}</td>
-          <td class="r ${d.variance > 0 ? 'neg' : ''}">${d.variance >= 0 ? '+' : ''}${money(d.variance)}</td>
+          ${varCell(d.variance)}
           <td>${statusChip(d.variance)}</td>` : ''}
         </tr>
         ${detailHtml(d)}`).join('')}</tbody>`;

@@ -35,6 +35,10 @@
     --sv1:#3b6fd4; --sv2:#12a19a; --sv3:#c2762a; --sv4:#9153c4; --sv5:#b8434e; --chart-halo:#fafbfc;
     --warn:#c07d10; --warn-soft:rgba(210,140,20,.16);
     --bad:#e0352b;  --bad-soft:rgba(224,53,43,.13);
+    /* Variance ink — its own steps, not --bad/--good: those are tuned for
+       chips and 30px tile numbers and drop under 4.5:1 at table text size
+       behind the over-budget row wash. */
+    --var-over:#bd2a20; --var-under:#0f7440;
     --blur:saturate(118%) blur(5px);
     --shadow:0 1px 1px rgba(20,40,80,.04), 0 10px 30px rgba(20,40,80,.10);
     --radius:15px; --radius-sm:10px;
@@ -53,6 +57,7 @@
       --sv1:#5d8ce6; --sv2:#1a9e90; --sv3:#bd8038; --sv4:#9b6ecd; --sv5:#d4636b; --chart-halo:#33373d;
       --warn:#e0a53a; --warn-soft:rgba(224,165,58,.16);
       --bad:#ff5b52;  --bad-soft:rgba(255,91,82,.16);
+      --var-over:#ff7a72; --var-under:#4bd07f;
       --shadow:0 1px 1px rgba(0,0,0,.3), 0 14px 36px rgba(0,0,0,.4);
     }
   }
@@ -70,6 +75,7 @@
     --sv1:#3b6fd4; --sv2:#12a19a; --sv3:#c2762a; --sv4:#9153c4; --sv5:#b8434e; --chart-halo:#fafbfc;
     --warn:#c07d10; --warn-soft:rgba(210,140,20,.16);
     --bad:#e0352b; --bad-soft:rgba(224,53,43,.13);
+    --var-over:#bd2a20; --var-under:#0f7440;
     --shadow:0 1px 1px rgba(20,40,80,.04), 0 10px 30px rgba(20,40,80,.10);
   }
   :root[data-theme="dark"]{
@@ -83,6 +89,7 @@
       --sv1:#5d8ce6; --sv2:#1a9e90; --sv3:#bd8038; --sv4:#9b6ecd; --sv5:#d4636b; --chart-halo:#33373d;
     --warn:#e0a53a; --warn-soft:rgba(224,165,58,.16);
     --bad:#ff5b52; --bad-soft:rgba(255,91,82,.16);
+    --var-over:#ff7a72; --var-under:#4bd07f;
     --shadow:0 1px 1px rgba(0,0,0,.3), 0 14px 36px rgba(0,0,0,.4);
   }
 
@@ -346,7 +353,19 @@ table td.nw,table th.nw{white-space:nowrap}
 /* Only tall drill-downs scroll — max-height leaves short ones scrollbar-free */
 .dept-detail .inner .acct-scroll{max-height:340px;overflow-y:auto}
 .dept-detail .inner thead th{position:sticky;top:0;z-index:1;background:var(--glass-strong)}
-tr.acct-over td{background:var(--bad-soft)}
+/* Budget variance — over budget reads red, under budget green. The cell also
+   prints the sign, so the colour is a second cue and never the only one; a
+   difference under a baht stays in plain ink because it is on plan. The
+   over-budget row wash is lighter than --bad-soft so the red number keeps
+   its contrast on top of it. */
+td.var{font-variant-numeric:tabular-nums}
+td.var.over{color:var(--var-over);font-weight:600}
+td.var.under{color:var(--var-under);font-weight:600}
+tr.acct-over td{background:color-mix(in srgb,var(--bad) 7%,transparent)}
+.tile.over{border-color:color-mix(in srgb,var(--bad) 45%,var(--glass-brd))}
+.tile.over .v{color:var(--var-over)}
+.tile.under{border-color:color-mix(in srgb,var(--good) 40%,var(--glass-brd))}
+.tile.under .v{color:var(--var-under)}
 /* browser-storage meter (Import) — how full localStorage is */
 .usage-track{height:8px;border-radius:99px;background:var(--glass-hi);border:1px solid var(--line);overflow:hidden}
 .usage-track span{display:block;height:100%;border-radius:99px;background:var(--accent);transition:width .25s ease}
