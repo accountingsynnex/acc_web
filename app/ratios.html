@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>FS Close Workspace — อัตราส่วนทางการเงิน (Ratios)</title>
-<link rel="stylesheet" href="styles.css" />
+<link rel="stylesheet" href="styles.css?v=2026-08-22.1" />
 </head>
 <body data-page="ratios">
 <div class="bg"><i></i></div>
@@ -52,8 +52,8 @@
             <span class="unit">วัน</span>
             <div class="spacer" style="margin-left:auto"></div>
             <div class="seg" data-trend-group>
-              <button class="on" data-group="month" title="ทุกงวดที่บันทึกไว้ เดือนละจุด">รายเดือน</button>
-              <button data-group="qy" title="เฉพาะงวดสิ้นไตรมาส — มี.ค./มิ.ย./ก.ย. เป็น Q1/Q2/Q3 และ ธ.ค. เป็นทั้งปี (งบสะสม 12 เดือน) แบบเดียวกับผังเทียบของบริษัท">ไตรมาส + ปี</button>
+              <button data-group="month" title="ทุกงวดที่บันทึกไว้ เดือนละจุด">รายเดือน</button>
+              <button class="on" data-group="qy" title="เฉพาะงวดสิ้นไตรมาส — มี.ค./มิ.ย./ก.ย. เป็น Q1/Q2/Q3 และ ธ.ค. เป็นทั้งปี (งบสะสม 12 เดือน) แบบเดียวกับผังเทียบของบริษัท">ไตรมาส + ปี</button>
             </div>
           </div>
           <div class="chart-grid">
@@ -85,21 +85,23 @@
           <div class="kri-row" data-kri-row>
             <span class="lbl">เป้าหมาย (KRI) — เส้นประในกราฟ:</span>
             <label>AR <input type="number" data-kri="ar" min="0" step="1" placeholder="—" /></label>
+            <label>AR Vendor <input type="number" data-kri="arVendor" min="0" step="1" placeholder="—" /></label>
             <label>Inventory <input type="number" data-kri="inv" min="0" step="1" placeholder="—" /></label>
             <label>AP <input type="number" data-kri="ap" min="0" step="1" placeholder="—" /></label>
             <label>Cash cycle <input type="number" data-kri="ccc" min="0" step="1" placeholder="—" /></label>
             <span class="unit">วัน</span>
             <div class="spacer" style="margin-left:auto"></div>
             <div class="seg" data-trend-group>
-              <button class="on" data-group="month" title="ทุกงวดที่บันทึกไว้ เดือนละจุด">รายเดือน</button>
-              <button data-group="qy" title="เฉพาะงวดสิ้นไตรมาส — มี.ค./มิ.ย./ก.ย. เป็น Q1/Q2/Q3 และ ธ.ค. เป็นทั้งปี (งบสะสม 12 เดือน) แบบเดียวกับผังเทียบของบริษัท">ไตรมาส + ปี</button>
+              <button data-group="month" title="ทุกงวดที่บันทึกไว้ เดือนละจุด">รายเดือน</button>
+              <button class="on" data-group="qy" title="เฉพาะงวดสิ้นไตรมาส — มี.ค./มิ.ย./ก.ย. เป็น Q1/Q2/Q3 และ ธ.ค. เป็นทั้งปี (งบสะสม 12 เดือน) แบบเดียวกับผังเทียบของบริษัท">ไตรมาส + ปี</button>
             </div>
           </div>
           <div class="chart-grid">
             <div class="chart-box"><canvas id="chartArDaysTw"></canvas></div>
+            <div class="chart-box"><canvas id="chartArVendorDaysTw"></canvas></div>
             <div class="chart-box"><canvas id="chartInvDaysTw"></canvas></div>
             <div class="chart-box"><canvas id="chartApDaysTw"></canvas></div>
-            <div class="chart-box"><canvas id="chartCccTw"></canvas></div>
+            <div class="chart-box wide"><canvas id="chartCccTw"></canvas></div>
           </div>
           <div class="tbl-wrap tbl-scroll" style="margin-top:14px"><table id="trendTblTw"></table></div>
         </div>
@@ -130,8 +132,8 @@
             <span class="unit">วัน</span>
             <div class="spacer" style="margin-left:auto"></div>
             <div class="seg" data-trend-group>
-              <button class="on" data-group="month" title="ทุกงวดที่บันทึกไว้ เดือนละจุด">รายเดือน</button>
-              <button data-group="qy" title="เฉพาะงวดสิ้นไตรมาส — มี.ค./มิ.ย./ก.ย. เป็น Q1/Q2/Q3 และ ธ.ค. เป็นทั้งปี (งบสะสม 12 เดือน) แบบเดียวกับผังเทียบของบริษัท">ไตรมาส + ปี</button>
+              <button data-group="month" title="ทุกงวดที่บันทึกไว้ เดือนละจุด">รายเดือน</button>
+              <button class="on" data-group="qy" title="เฉพาะงวดสิ้นไตรมาส — มี.ค./มิ.ย./ก.ย. เป็น Q1/Q2/Q3 และ ธ.ค. เป็นทั้งปี (งบสะสม 12 เดือน) แบบเดียวกับผังเทียบของบริษัท">ไตรมาส + ปี</button>
             </div>
           </div>
           <div class="chart-grid">
@@ -147,11 +149,11 @@
   </div>
 </div>
 <script src="vendor/chart.umd.js"></script>
-<script src="../engine/rulebook.js"></script>
-<script src="../engine/group-engine.js"></script>
-<script src="store.js"></script>
-<script src="fs.js"></script>
-<script src="shell.js"></script>
-<script src="ratios.js"></script>
+<script src="../engine/rulebook.js?v=2026-08-22.1"></script>
+<script src="../engine/group-engine.js?v=2026-08-22.1"></script>
+<script src="store.js?v=2026-08-22.1"></script>
+<script src="fs.js?v=2026-08-22.1"></script>
+<script src="shell.js?v=2026-08-22.1"></script>
+<script src="ratios.js?v=2026-08-22.1"></script>
 </body>
 </html>

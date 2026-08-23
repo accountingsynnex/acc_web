@@ -2,6 +2,14 @@
    in one place. A page opts in with:  <body data-page="statements">  and
    an empty <aside class="side" id="side"></aside>, then loads this script. */
 (function () {
+  /* Which build the browser actually has. Every page prints it in the sidebar
+     and every app-owned script/stylesheet is requested with it as ?v=, so a
+     release can't be half-applied by a cached file — and "is this the new one
+     or the old one?" is answerable by looking, not by guessing. Bump this
+     string in the same commit as anything worth telling apart. */
+  const BUILD = '2026-08-22.1';
+  window.APP_BUILD = BUILD;
+
   const ic = {
     import: '<path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>',
     tb: '<path d="M4 6h16M4 12h16M4 18h10"/>',
@@ -45,5 +53,6 @@
   if (side) side.innerHTML =
     `<div class="brand"><span class="mark">◈</span><span class="wm">Close Workspace<small>SYNNEX Consolidation</small></span></div>
      ${nav}
-     <div class="side-foot"><div class="avatar">AT</div><div class="who">Accounting Team<small>Preparer</small></div></div>`;
+     <div class="side-foot"><div class="avatar">AT</div><div class="who">Accounting Team<small>Preparer</small></div></div>
+     <div class="side-ver" title="เวอร์ชันของไฟล์ที่เบราว์เซอร์โหลดอยู่จริง">build ${BUILD}</div>`;
 })();
