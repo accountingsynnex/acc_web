@@ -80,6 +80,27 @@
     download(`FS_Closing_Package_${pk || 'current'}.json`, JSON.stringify(payload, null, 2), 'application/json');
   }
 
+  /* The whole close as one workbook, shaped like the company's own Conso
+     workpaper — see export-xlsx.js. Building it walks every account of
+     every entity plus every journal, which on a full consolidation is a
+     second or two, so the button says what it's doing rather than looking
+     dead. */
+  $('xlsxBtn').onclick = () => {
+    const btn = $('xlsxBtn'), label = btn.textContent;
+    btn.disabled = true; btn.textContent = 'กำลังสร้างไฟล์…';
+    setTimeout(() => {
+      try {
+        const meta = ConsoExport.download(period());
+        btn.textContent = `ดาวน์โหลดแล้ว (${meta.periodLabel})`;
+      } catch (e) {
+        alert('ส่งออกไม่สำเร็จ: ' + e.message);
+        btn.textContent = label;
+      } finally {
+        btn.disabled = false;
+        setTimeout(() => { btn.textContent = label; }, 4000);
+      }
+    }, 30);
+  };
   $('csvBtn').onclick = exportCSV;
   $('jsonBtn').onclick = exportJSON;
   $('themeBtn').onclick = () => { const r = document.documentElement; r.setAttribute('data-theme', r.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'); };

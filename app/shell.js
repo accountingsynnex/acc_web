@@ -7,7 +7,7 @@
      release can't be half-applied by a cached file — and "is this the new one
      or the old one?" is answerable by looking, not by guessing. Bump this
      string in the same commit as anything worth telling apart. */
-  const BUILD = '2026-08-22.3';
+  const BUILD = '2026-08-23.1';
   window.APP_BUILD = BUILD;
 
   const ic = {
