@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>FS Close Workspace — ตรวจและส่งออก (Review)</title>
-<link rel="stylesheet" href="styles.css?v=2026-08-23.5" />
+<link rel="stylesheet" href="styles.css?v=2026-08-23.6" />
 </head>
 <body data-page="review">
 <div class="bg"><i></i></div>
@@ -22,6 +22,12 @@
     <div class="content">
       <div class="page-head"><h1>ตรวจก่อนปิดงบ และส่งออก</h1><p>ด่านตรวจสอบก่อนสรุปงบการเงินรวม — ทุกด่านต้องผ่านก่อนส่งออกแพ็กเกจปิดงบ</p></div>
       <div class="tiles" id="tiles" style="margin-bottom:20px"></div>
+      <section>
+        <h2 class="sec">ตรวจความผิดปกติของงบ</h2>
+        <p class="muted" style="margin:-6px 0 14px;font-size:12.5px">ตรวจ 14 อย่างกับตัวเลขในงบและกับงวดก่อนหน้า — ยอดผิดด้าน · ยอดสะสมลดลง · บัญชีหาย/โผล่ · ยอดกระโดด · เงินฝากติดลบ · covenant · วงจรเงินสดหลุดช่วงปกติ · รายการลงซ้ำ · ผลต่างในงบกระแสเงินสด เกณฑ์ทุกข้อคิดเป็นสัดส่วนของสินทรัพย์รวม ไม่ใช่ตัวเลขคงที่</p>
+        <div id="anomalies"></div>
+      </section>
+
       <h2 class="sec">ด่านตรวจสอบ (Closing gates)</h2>
       <div class="checklist" id="checks"></div>
       <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap">
@@ -31,15 +37,16 @@
   </div>
 </div>
 <script src="vendor/xlsx.full.min.js"></script>
-<script src="../engine/rulebook.js?v=2026-08-23.5"></script>
-<script src="../engine/group-engine.js?v=2026-08-23.5"></script>
-<script src="store.js?v=2026-08-23.5"></script>
-<script src="period-picker.js?v=2026-08-23.5"></script>
-<script src="fs.js?v=2026-08-23.5"></script>
-<script src="shell.js?v=2026-08-23.5"></script>
-<script src="../engine/ratio-engine.js?v=2026-08-23.5"></script>
-<script src="../engine/cashflow-engine.js?v=2026-08-23.5"></script>
-<script src="export-xlsx.js?v=2026-08-23.5"></script>
-<script src="review.js?v=2026-08-23.5"></script>
+<script src="../engine/rulebook.js?v=2026-08-23.6"></script>
+<script src="../engine/group-engine.js?v=2026-08-23.6"></script>
+<script src="store.js?v=2026-08-23.6"></script>
+<script src="period-picker.js?v=2026-08-23.6"></script>
+<script src="fs.js?v=2026-08-23.6"></script>
+<script src="shell.js?v=2026-08-23.6"></script>
+<script src="../engine/ratio-engine.js?v=2026-08-23.6"></script>
+<script src="../engine/cashflow-engine.js?v=2026-08-23.6"></script>
+<script src="../engine/anomaly-engine.js?v=2026-08-23.6"></script>
+<script src="export-xlsx.js?v=2026-08-23.6"></script>
+<script src="review.js?v=2026-08-23.6"></script>
 </body>
 </html>

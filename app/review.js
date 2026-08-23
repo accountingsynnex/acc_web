@@ -41,6 +41,8 @@
       tile('งบดุล', c.bs && Math.abs(c.bs.diff) < 1 ? 'สมดุล' : 'ตรวจ', c.bs ? `ผลต่าง ${money(c.bs.diff)}` : '—').replace('<div class="v">', `<div class="v" style="color:var(--${c.bs && Math.abs(c.bs.diff) < 1 ? 'good' : 'bad'})">`),
     ].join('');
 
+    renderAnomalies();
+
     const gates = [
       [c.E.length > 0, 'นำเข้างบทดลองแล้ว', `${c.E.length} บริษัท: ${c.E.join(', ')}`, null],
       [c.unbalanced.length === 0, 'งบทดลองสมดุลทุกบริษัท', c.unbalanced.length ? `ไม่สมดุล: ${c.unbalanced.join(', ')}` : 'Debit = Credit ครบ', null],
@@ -52,6 +54,46 @@
     ];
     $('checks').innerHTML = gates.map(([ok, t, d, link]) => `<div class="check ${ok ? 'ok' : 'no'}"><div class="ico">${ok ? '✓' : '!'}</div>
       <div><div class="t">${esc(t)}</div><div class="d">${esc(d)}${link && !ok ? ` <a class="linkish" href="${link[0]}">${esc(link[1])}</a>` : ''}</div></div></div>`).join('');
+  }
+
+  /* The anomaly panel. Findings are the point of the page, so they come
+     first and they carry their own numbers — a warning that says "check the
+     receivables" without saying which figure looked wrong just moves the
+     work. Severity is the only sort: a covenant breach and a new account
+     are both worth knowing, but not equally. */
+  const SEV = {
+    high: { cls: 'no', ico: '!', label: 'ต้องแก้' },
+    medium: { cls: 'no', ico: '?', label: 'ควรตรวจ' },
+    low: { cls: 'ok', ico: 'i', label: 'เผื่อดู' },
+  };
+  function renderAnomalies() {
+    const box = $('anomalies');
+    if (!box) return;
+    const r = AnomalyEngine.scan(period());
+    const head = [];
+    if (r.counts) {
+      if (r.counts.high) head.push(`<b style="color:var(--bad)">ต้องแก้ ${r.counts.high}</b>`);
+      if (r.counts.medium) head.push(`<b style="color:var(--warn)">ควรตรวจ ${r.counts.medium}</b>`);
+      if (r.counts.low) head.push(`เผื่อดู ${r.counts.low}`);
+    }
+    const note = `<div class="muted" style="font-size:12px;margin-top:10px">ตรวจ ${r.checks} ข้อ`
+      + (r.materiality ? ` · เกณฑ์นัยสำคัญที่ใช้ ${money(r.materiality)} บาท (0.2% ของสินทรัพย์รวม)` : '')
+      + (r.priorKey ? ` · เทียบกับงวด ${esc(r.priorKey)}` : '')
+      + (r.skipped && r.skipped.length ? ` · ข้ามการตรวจ: ${esc(r.skipped.join(' · '))}` : '')
+      + '</div>';
+    if (!r.findings.length) {
+      box.innerHTML = `<div class="check ok"><div class="ico">✓</div><div><div class="t">ไม่พบความผิดปกติ</div>
+        <div class="d">ผ่านทุกข้อที่ตรวจได้ในงวดนี้</div></div></div>${note}`;
+      return;
+    }
+    box.innerHTML = (head.length ? `<div class="muted" style="font-size:12.5px;margin-bottom:10px">พบ ${head.join(' · ')}</div>` : '')
+      + r.findings.map(f => {
+        const s = SEV[f.severity] || SEV.low;
+        return `<div class="check ${s.cls}" style="margin-bottom:10px"><div class="ico">${s.ico}</div><div>
+          <div class="t">${esc(f.title)} <span class="muted" style="font-weight:500;font-size:11.5px">· ${s.label}</span></div>
+          <div class="d">${esc(f.detail)}${f.where ? ` <a class="linkish" href="${f.where.href}">${esc(f.where.label)}</a>` : ''}</div>
+        </div></div>`;
+      }).join('') + note;
   }
 
   function download(name, text, type) {
