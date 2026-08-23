@@ -59,6 +59,20 @@
     return hits.length ? hits[0].ent : null;
   }
   const isElimination = src => String(src || '').toUpperCase().includes('ELIMI');
+  const entityName = code => { const e = RULEBOOK.entities.find(x => x.code === code); return e ? e.name : code; };
+
+  /* The sheet title, spelled out. "AJE+RJE-Synnex" is clear to whoever
+     works in the source workbook every month and opaque to everyone else
+     who is handed the file — and this export exists precisely to be handed
+     around. The tab keeps the short name so it still matches the workpaper. */
+  const AJE_RJE = 'AJE (Adjusting Journal Entries — รายการปรับปรุง) + RJE (Reclassifying Journal Entries — รายการจัดประเภทใหม่)';
+  function sourceTitle(src, entities) {
+    if (isElimination(src)) return `${src} — รายการตัดรายการระหว่างกันในการจัดทำงบการเงินรวม (Consolidation Elimination Entries)`;
+    const ent = entityOfSource(src, entities);
+    return ent
+      ? `${src} — ${AJE_RJE} ของ ${entityName(ent)} (${ent}) · ปรับที่ระดับบริษัท ก่อนรวมงบ`
+      : `${src} — ${AJE_RJE} ระดับงบการเงินรวม จากผู้สอบบัญชี · ปรับหลังตัดรายการระหว่างกัน`;
+  }
 
   const num = (v, z) => ({ v: typeof v === 'number' && isFinite(v) ? v : 0, t: 'n', z: z || MONEY });
   const txt = v => ({ v: v == null ? '' : String(v), t: 's' });
@@ -260,10 +274,10 @@
 
   // One sheet per journal source, laid out entry by entry the way the
   // workpaper's own Eliminate / AJE+RJE sheets read.
-  function journalSheet(src, pk, meta) {
+  function journalSheet(src, pk, meta, entities) {
     const js = Store.journals(pk).filter(j => (j.source || 'Journal') === src);
     const aoa = [
-      [txt(COMPANY)], [txt(src)], [txt(`YTD ended ${meta.periodLabel}`)], [],
+      [txt(COMPANY)], [txt(sourceTitle(src, entities))], [txt(`YTD ended ${meta.periodLabel}`)], [],
       ['เลขที่', 'คำอธิบาย', 'รหัสบัญชี', 'ชื่อบัญชี', 'เดบิต', 'เครดิต', 'สุทธิ', 'ใช้งาน'].map(txt),
     ];
     for (const j of js) {
@@ -463,11 +477,26 @@
       [txt('Eliminate / AJE+RJE-*'), txt('รายการตัดบัญชีและปรับปรุง แยกตามแหล่งที่มา ทีละรายการ')],
       [txt('Cost Center'), txt('ยอดแยกตามหน่วยงานและ cost center (ถ้ามีการนำเข้า)')],
       [],
+      [txt('คำย่อในชื่อชีทและหัวคอลัมน์')],
+      [txt('AJE'), txt('Adjusting Journal Entry — รายการปรับปรุง: ทำให้ตัวเลขเปลี่ยน (กำไรหรือยอดรวมขยับ) เช่น ปรับ cut-off การขาย ปรับภาษีเงินได้')],
+      [txt('RJE'), txt('Reclassifying Journal Entry — รายการจัดประเภทใหม่: ย้ายจากบรรทัดหนึ่งไปอีกบรรทัด ยอดรวมและกำไรไม่เปลี่ยน เช่น ย้ายลูกหนี้หมุนเวียนไปไม่หมุนเวียน')],
+      [txt('CAJE'), txt('รายการปรับปรุงที่ลงที่ระดับงบการเงินรวม (ตามที่ใช้ในไฟล์ Conso ของบริษัท) — ควรยืนยันความหมายกับผู้สอบบัญชีที่ออกรายการ')],
+      [txt('Eliminate'), txt('รายการตัดรายการระหว่างกัน — ตัดยอดที่บริษัทในกลุ่มทำกันเอง ออกจากงบการเงินรวม')],
+      [txt('After Adj.'), txt('ยอดของบริษัทนั้นหลังรายการปรับปรุง/จัดประเภทใหม่ของบริษัทนั้นเอง')],
+      [txt('Conso'), txt('ยอดงบการเงินรวม = ทุกบริษัทรวมกัน หลังปรับปรุงระดับบริษัท และหลังตัดรายการระหว่างกัน')],
+      [],
+      [txt('รายการปรับปรุงในงวดนี้ แยกตามแหล่งที่มา')],
+      [],
       [txt('หมายเหตุ')],
       [txt('• ทุกตัวเลขเป็นค่าคงที่ ไม่ใช่สูตร — แก้ไขต่อได้ทันที และจะไม่คำนวณใหม่ให้ต่างจากในเว็บ')],
       [txt('• เครื่องหมาย: หนี้สิน ส่วนของผู้ถือหุ้น รายได้ และต้นทุน แสดงเป็นค่าบวกตามแบบของไฟล์ Conso')],
       [txt('• ยอดในชีท Conso คือยอดหลังรายการที่ "เปิดใช้งาน" ที่หน้า Journals เท่านั้น')],
     ];
+    // Every source that actually has entries this period, spelled out.
+    const notesAt = aoa.findIndex(r => r.length === 1 && r[0] && r[0].v === 'หมายเหตุ');
+    const list = d.sources.map(src => [txt(src), txt(sourceTitle(src, d.entities).replace(src + ' — ', '')
+      + ` · ${Store.journals(pk).filter(j => (j.source || 'Journal') === src).length} รายการ`)]);
+    aoa.splice(notesAt - 1, 0, ...list);
     return aoa;
   }
 
@@ -493,7 +522,7 @@
     put('Cash Flow', cashFlowSheet(pk, meta), [62, 20]);
     put('NFS+Ratio', ratioSheet(pk, meta), [30, 26, 8, 16, 16, 16, 70, 70, 70]);
     for (const ent of d.entities) put('TB ' + ent, tbSheet(ent, pk, meta), [12, 42, 18, 18, 12, 22, 28]);
-    for (const src of d.sources) put(src, journalSheet(src, pk, meta), [14, 42, 12, 40, 18, 18, 18, 8]);
+    for (const src of d.sources) put(src, journalSheet(src, pk, meta, d.entities), [14, 42, 12, 40, 18, 18, 18, 8]);
     put('Cost Center', costCenterSheet(pk, meta), [28, 28, 12, 40, 18]);
     return { wb, meta };
   }
