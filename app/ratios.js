@@ -588,8 +588,17 @@
     const ink = cssVar('--ink'), muted = cssVar('--muted'), line = cssVar('--line'), faint = cssVar('--faint');
     const halo = cssVar('--chart-halo'), warn = cssVar('--warn');
     const hasTarget = cfg.target != null && isFinite(cfg.target);
+    // A point whose real formula couldn't be computed (the months it needs
+    // aren't archived) is drawn washed out and says so in its tooltip. The
+    // series would otherwise mix two methods with nothing to show where it
+    // switches, and a step caused by the method would read as a step in the
+    // business. Colour alone doesn't carry it — the tooltip and the note
+    // under the charts both say which points these are.
+    const approx = cfg.approx || [];
+    const wash = /^#[0-9a-f]{6}$/i.test(cfg.color) ? cfg.color + '59' : cfg.color;
     const datasets = [{
-      type: 'bar', label: cfg.title, data: cfg.days, backgroundColor: cfg.color,
+      type: 'bar', label: cfg.title, data: cfg.days,
+      backgroundColor: cfg.days.map((_, i) => approx[i] ? wash : cfg.color),
       borderRadius: 4, borderSkipped: 'bottom',
       // Capped rather than filling the band, so the leftover is air and
       // neighbours are separated by the surface instead of a stroke.
@@ -635,6 +644,7 @@
               // one hover away rather than gone.
               afterBody: items => {
                 const i = items[0].dataIndex, out = [];
+                if (approx[i]) out.push('⚠ สูตรประมาณ (ยังไม่มีเดือนย้อนหลังครบ)');
                 const v = cfg.balance && cfg.balance[i];
                 if (v != null) out.push(`${cfg.balanceLabel}: ${M(v)}`);
                 for (const part of cfg.parts || []) {
@@ -813,22 +823,45 @@
       const pg = prows && prows.length ? FS.grouped(prows) : null;
       if (!pg) continue;
       const pMonths = monthsFromKey(p.key);
-      trendList.push({ label: qLabel || p.label, bs: FS.buildBS(pg), pl: FS.buildPL(pg), months: pMonths, monthsGuessed: pMonths == null });
+      trendList.push({ key: p.key, label: qLabel || p.label, bs: FS.buildBS(pg), pl: FS.buildPL(pg), months: pMonths, monthsGuessed: pMonths == null });
     }
     // "ปัจจุบัน" is always the live TB specifically (not whichever period the
     // top cards above resolved to) — omitted outright when there's no live
     // TB at all, rather than duplicating one of the saved points under a
     // confusing second label.
-    if (liveG) trendList.push({ label: 'ปัจจุบัน', bs: liveBs, pl: livePl, months: periodOpt().months, monthsGuessed: false });
+    if (liveG) trendList.push({ key: null, label: 'ปัจจุบัน', bs: liveBs, pl: livePl, months: periodOpt().months, monthsGuessed: false });
     const trendLabels = trendList.map(p => p.label);
+    /* Every point runs the same real formulas the cards do, resolved from
+       the periods around THAT point — trailing-12-month revenue and cost of
+       sales, Synnex KPI's year-ago average, Taiwan's four-month opening-and-
+       closing average. The series used to hand computeTabMetrics nothing but
+       the point's own file, so every point took the fallback (that file's
+       cumulative flow scaled up by its month count) and the chart read a few
+       days above the company's own sheet while the card above it read right.
+
+       The helpers still return null the moment a month they need isn't
+       archived, so a point with no history behind it keeps the fallback
+       rather than a fabricated figure — `exact` records which is which so
+       the note under the charts can say how many points are which. */
     const perPoint = trendList.map((pt, i) => {
       const prevBs = i > 0 ? trendList[i - 1].bs : null;
       const pm = pt.months || trendDefaultMonths;
       const pf = 12 / pm;
+      const k = pt.key;
+      const ttmRevenue = k ? ttmFlow(k, 'revenue') : null, ttmCogs = k ? ttmFlow(k, 'cogs') : null;
+      const qRevenue = k ? quarterFlow(k, 'revenue') : null, qCogs = k ? quarterFlow(k, 'cogs') : null;
+      const ctx = {
+        periodMonths: pm, periodLabel: pt.label,
+        ttm: (ttmRevenue != null && ttmCogs != null) ? { revenue: ttmRevenue, cogs: ttmCogs } : null,
+        twFlow: (qRevenue != null && qCogs != null) ? { revenue: qRevenue, cogs: qCogs } : null,
+        thAvg: k ? thAveraging(k) : null,
+        twAvg: k ? twAveraging(k) : null,
+      };
       return {
-        th: computeTabMetrics('th', pt.bs, pt.pl, null, { periodMonths: pm, periodLabel: pt.label }),
-        tw: computeTabMetrics('tw', pt.bs, pt.pl, prevBs, { periodMonths: pm, periodLabel: pt.label }),
-        set: computeTabMetrics('set', pt.bs, pt.pl, prevBs, { annualizeFactor: pf, periodMonths: pm, periodLabel: pt.label }),
+        th: computeTabMetrics('th', pt.bs, pt.pl, null, ctx),
+        tw: computeTabMetrics('tw', pt.bs, pt.pl, prevBs, ctx),
+        set: computeTabMetrics('set', pt.bs, pt.pl, prevBs, Object.assign({ annualizeFactor: pf }, ctx)),
+        exact: { th: !!(ctx.ttm && ctx.thAvg), tw: !!(ctx.twFlow && ctx.twAvg), set: !!ctx.ttm },
       };
     });
 
@@ -839,12 +872,22 @@
       const monthsNote = document.querySelector(`[data-panel="${tabKey}"] [data-trend-months-note]`);
       if (monthsNote) {
         const guessedLabels = trendList.filter(p => p.monthsGuessed && p.label !== 'ปัจจุบัน').map(p => p.label);
-        monthsNote.style.display = hasEnough && (guessedLabels.length || groupedOut) ? '' : 'none';
-        if (!guessedLabels.length && groupedOut) {
-          monthsNote.innerHTML = `แสดงเฉพาะงวดสิ้นไตรมาส — ซ่อนไป <b>${groupedOut}</b> งวด (ธ.ค. แสดงเป็นทั้งปี เพราะงบสะสมถึง ธ.ค. คือ 12 เดือนอยู่แล้ว) กด <b>รายเดือน</b> เพื่อดูครบทุกงวด`;
-        } else if (guessedLabels.length) {
-          monthsNote.innerHTML = `⚠ งวด <b>${esc(guessedLabels.join(', '))}</b> ไม่ได้ตั้งรหัสงวดเป็น <code>YYYY-MM</code> (เช่น 2026-06) เดาจำนวนเดือนไม่ได้ จึงใช้ตัวคูณเดียวกับปุ่ม Q1–Q4 ด้านบนแทน — อาจคลาดเคลื่อนถ้างวดนั้นไม่ได้ครอบคลุมพอดีตามที่ปุ่มเลือกไว้`;
-        }
+        const approx = perPoint.filter(m => !m.exact[tabKey]).length;
+        // What each tab's real formula needs archived before a point can
+        // stop approximating — worth naming, since the fix is to import
+        // those months rather than anything on this page.
+        const NEEDS = {
+          th: 'สูตรจริงต้องมีงบ 12 เดือนก่อนหน้าติดกัน และงวดเดียวกันของปีก่อน',
+          tw: 'สูตรจริงต้องมีงบ 4 เดือนติดกันจนถึงงวดนั้น (รวมเดือนก่อนไตรมาส)',
+          set: 'สูตรจริงต้องมีงบ 12 เดือนก่อนหน้าติดกัน',
+        };
+        const parts = [];
+        if (groupedOut) parts.push(`แสดงเฉพาะงวดสิ้นไตรมาส — ซ่อนไป <b>${groupedOut}</b> งวด (ธ.ค. แสดงเป็นทั้งปี เพราะงบสะสมถึง ธ.ค. คือ 12 เดือนอยู่แล้ว) กด <b>รายเดือน</b> เพื่อดูครบทุกงวด`);
+        if (guessedLabels.length) parts.push(`⚠ งวด <b>${esc(guessedLabels.join(', '))}</b> ไม่ได้ตั้งรหัสงวดเป็น <code>YYYY-MM</code> (เช่น 2026-06) เดาจำนวนเดือนไม่ได้ จึงใช้ตัวคูณเดียวกับปุ่ม Q1–Q4 ด้านบนแทน — อาจคลาดเคลื่อนถ้างวดนั้นไม่ได้ครอบคลุมพอดีตามที่ปุ่มเลือกไว้`);
+        if (approx) parts.push(`⚠ <b>${approx}</b> จาก <b>${perPoint.length}</b> จุด (แท่งสีจาง) ยังใช้สูตรประมาณ (ยอดสะสมของงวดนั้นปรับเป็นรายปี) เพราะยังไม่ได้บันทึกเดือนย้อนหลังที่ต้องใช้ — ${NEEDS[tabKey]} · จุดที่เหลือใช้สูตรจริงชุดเดียวกับการ์ดด้านบน`);
+        else parts.push('✓ ทุกจุดในกราฟใช้สูตรจริงชุดเดียวกับการ์ดด้านบน');
+        monthsNote.style.display = hasEnough ? '' : 'none';
+        monthsNote.innerHTML = parts.join('<br>');
       }
       if (!hasEnough) {
         ['ArDays', 'ArVendorDays', 'InvDays', 'ApDays', 'Ccc'].forEach(c => { const id = `chart${c}${suffix}`; if (charts[id]) { charts[id].destroy(); delete charts[id]; } });
@@ -866,9 +909,10 @@
       const sv = [cssVar('--sv1'), cssVar('--sv2'), cssVar('--sv3'), cssVar('--sv4'), cssVar('--sv5')];
       // One hue per measure, held across tabs and across re-renders: the AR
       // panel is blue on all three tabs whatever the period filter shows.
+      const approxPts = perPoint.map(m => !m.exact[tabKey]);
       const panel = (id, title, key, target, hint, color, balanceLabel) =>
         drawDaysChart(`chart${id}${suffix}`, {
-          title, hint, target, color, balanceLabel,
+          title, hint, target, color, balanceLabel, approx: approxPts,
           labels: trendLabels, days: days(key), balance: bal(key),
         });
       panel('ArDays', 'AR Days', 'arDays', t.ar, 'ยิ่งน้อยยิ่งดี', sv[0], 'ลูกหนี้การค้า');
@@ -889,7 +933,7 @@
       if (tabKey === 'tw') parts.splice(1, 0, { label: 'AR Vendor Days', data: days('arVendorDays') });
       drawDaysChart(`chartCcc${suffix}`, {
         title: 'Cash Conversion Cycle', hint: 'ยิ่งน้อยยิ่งดี', target: t.ccc, color: sv[3],
-        labels: trendLabels, days: days('ccc'), parts,
+        labels: trendLabels, days: days('ccc'), parts, approx: approxPts,
       });
     }
 
