@@ -141,6 +141,15 @@
 
   const isXlsx = f => /\.xlsx?$/i.test(f.name);
 
+  /* Cheap enough to run on a file the batch importer would otherwise refuse:
+     bookSheets reads the sheet directory and parses no worksheet. */
+  async function isExportedWorkbook(file) {
+    try {
+      const names = XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: 'array', bookSheets: true }).SheetNames || [];
+      return names.some(n => normSheet(n) === EXPORT_INFO_SHEET);
+    } catch (err) { return false; }
+  }
+
   function resetWbDrop() {
     $('wbDrop').classList.remove('busy');
     renderWorkbook();
@@ -168,7 +177,7 @@
       $('wbTag').hidden = false;
       $('wbRemove').hidden = true;
       $('wbT').textContent = 'อัปโหลด Workpaper ทั้งไฟล์ (.xlsx)';
-      $('wbD').textContent = 'ลากไฟล์งบ Conso ทั้งไฟล์มาวาง — ระบบแยก TB ทุกบริษัท (SYN · SVP · SYNIN · SWOP) ให้อัตโนมัติ';
+      $('wbD').textContent = 'ลากไฟล์งบ Conso ทั้งไฟล์มาวาง — ระบบแยก TB ทุกบริษัท (SYN · SVP · SYNIN · SWOP) ให้อัตโนมัติ · ไฟล์ Excel ที่ส่งออกจากเว็บนี้เอง วางที่นี่ได้เหมือนกัน';
       return;
     }
     drop.classList.add('loaded');
@@ -217,6 +226,15 @@
   // months, "TB-SYN" others — for a sheet that is otherwise identical.
   const normSheet = s => String(s).trim().replace(/[\s_-]+/g, ' ').toUpperCase();
 
+  /* The marker that tells one of our exports apart from a Conso workpaper,
+     matched through normSheet so the leading underscore and the space are
+     handled the same way as every other sheet name. The cap is generous
+     rather than READ_CAP: an export's TB sheet is exactly as long as the
+     trial balance it came from, with none of the workpaper's empty
+     1M-row tail, so there is nothing to protect against here. */
+  const EXPORT_INFO_SHEET = normSheet('_Export info');
+  const EXPORT_READ_CAP = 200000;
+
   // An entity's own sheet name follows its CODE (below) for every entity
   // except when the entity itself was legally renamed — SYNIN's TB sheet is
   // "TB-INFINIT" from the month it became "Infinit Partners Co.,Ltd."
@@ -260,6 +278,25 @@
         // its name is this month) is known before the restricted real read,
         // rather than assumed and then silently unmatched.
         const names = XLSX.read(new Uint8Array(reader.result), { type: 'array', bookSheets: true }).SheetNames || [];
+
+        /* One of our own exports, not a Conso workpaper. The "_Export info"
+           sheet is written by ConsoExport.build and by nothing else, so the
+           file says which of the two it is and this drop zone takes both —
+           the alternative was asking the person to know which button their
+           file belongs to, and getting it wrong just reads as "ไม่พบชีต TB".
+           Read in full here: our exports are small, and parse needs sheets
+           this workpaper path would not have asked for. */
+        if (names.some(n => normSheet(n) === EXPORT_INFO_SHEET)) {
+          diagLine('info', `${file.name}: เป็นไฟล์ที่ส่งออกจากเว็บนี้ (มีชีท "_Export info") — อ่านกลับเป็นงบทดลอง/รายการปรับปรุง`);
+          const own = XLSX.read(new Uint8Array(reader.result), {
+            type: 'array', sheetRows: EXPORT_READ_CAP, cellDates: false,
+            cellStyles: false, cellFormula: false, cellHTML: false, cellNF: false, bookVBA: false,
+          });
+          ingestExportedWorkbook(file, own, notify);
+          resetWbDrop();
+          resolve();
+          return;
+        }
 
         const entitySheet = {};      // entity code -> real sheet name, or null
         const deptVariant = {};      // entity code -> its "_TW"-style variant, or null
@@ -457,15 +494,22 @@
     try {
       for (const file of files) {
         const key = periodKeyFromFilename(file.name);
-        if (!key) {
+        // A filename with no date in it is only a dead end for a workpaper.
+        // One of our own exports carries its period inside "_Export info",
+        // so it gets read rather than skipped even if it was renamed.
+        if (!key && !await isExportedWorkbook(file)) {
           notes.push(`"${file.name}" — แยกรหัสงวด (ปี-เดือน) จากชื่อไฟล์ไม่ได้ ข้ามไฟล์นี้`);
           diagLine('bad', `${file.name}: อ่านปี-เดือนจากชื่อไฟล์ไม่ได้ จึงไม่รู้ว่าจะลงงวดไหน — ชื่อไฟล์ต้องมีรูปแบบเช่น 2026062026, 2026-06 หรือ 202606`);
           continue;
         }
-        if (!Store.getPeriod(key)) { Store.tbFor(key); Store.setPeriodLabel(key, labelFromKey(key)); }
-        activePeriod = key;
+        if (key) {
+          if (!Store.getPeriod(key)) { Store.tbFor(key); Store.setPeriodLabel(key, labelFromKey(key)); }
+          activePeriod = key;
+        } else {
+          activePeriod = prevActive;    // the export says where it goes; failing that, the page's own period
+        }
         recognized++;
-        await ingestWorkbook(file, msg => notes.push(`งวด ${key} (${file.name}): ${msg}`));
+        await ingestWorkbook(file, msg => notes.push(`${key ? `งวด ${key} ` : ''}(${file.name}): ${msg}`));
       }
     } finally {
       activePeriod = prevActive;
@@ -683,34 +727,27 @@
     });
   }
 
-  /* The exported Excel workbook, coming back. See ConsoExport.parse for why
-     only the TB and journal sheets are read: they are the input the rest of
-     the file is computed from, so a number changed there flows into every
-     statement, while a number typed over a statement total would just
-     contradict them. */
-  $('reimportBtn').onclick = () => $('reimportInput').click();
-  $('reimportInput').onchange = async e => {
-    const file = e.target.files[0];
-    e.target.value = '';
-    if (!file) return;
-    // Reading a workbook takes seconds for one of ours and the better part
-    // of a minute for a 25 MB workpaper dropped here by mistake. Say so,
-    // rather than looking dead until the alert.
-    const btn = $('reimportBtn'), label = btn.textContent;
-    btn.disabled = true; btn.textContent = 'กำลังอ่านไฟล์…';
-    diag = [];
+  /* One of our own exported workbooks, coming back — reached from the same
+     drop zone as a Conso workpaper, because which of the two a file is is
+     something the file itself answers (see ingestWorkbook) and not a
+     question worth putting to whoever is holding it.
+
+     See ConsoExport.parse for why only the TB and journal sheets are read:
+     they are the input the rest of the file is computed from, so a number
+     changed there flows into every statement, while a number typed over a
+     statement total would just contradict them. */
+  function ingestExportedWorkbook(file, wb, notify = alert) {
     let parsed;
     try {
-      const wb = XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: 'array', cellDates: false });
       parsed = ConsoExport.parse(wb, file.name);
     } catch (err) {
-      alert('อ่านไฟล์ไม่ได้: ' + err.message);
+      notify('อ่านไฟล์ไม่ได้: ' + err.message);
       diagLine('bad', `${file.name}: อ่านเป็น Excel ไม่ได้ — ${err.message} (ไฟล์เสีย ใส่รหัสผ่าน หรือไม่ใช่ .xlsx)`);
       renderDiag();
       return;
-    } finally { btn.disabled = false; btn.textContent = label; }
+    }
     if (!parsed.ok) {
-      alert(parsed.error);
+      notify(parsed.error);
       diagLine('bad', `${file.name}: ${parsed.error.split('\n')[0]}`);
       (parsed.error.split('\n').slice(1).filter(Boolean)).forEach(x => diagLine('info', x.trim()));
       renderDiag();
@@ -757,10 +794,10 @@
     for (const src of c.journalSources) diagLine('ok', `รายการปรับปรุง "${src}": ${parsed.journals.filter(j => j.source === src).length} รายการ`);
     if (c.overrides) diagLine(r.applied ? 'ok' : 'info', `ผังบัญชีที่ไฟล์ระบุต่างจากในเว็บ ${c.overrides} บัญชี — ${r.applied ? `แก้ตามไฟล์แล้ว ${r.applied} บัญชี` : 'ไม่ได้แก้'}`);
     renderDiag();
-    alert(`นำเข้าจากไฟล์ Excel แล้ว — งวด ${targetLabel}\n\n`
+    notify(`นำเข้าจากไฟล์ Excel ที่ส่งออกไป แล้ว — งวด ${targetLabel}\n\n`
       + `งบทดลอง ${c.entities} บริษัท · รายการตัดบัญชี ${c.journals} รายการ`
       + (r.applied ? `\nแก้ผังบัญชีตามไฟล์ ${r.applied} บัญชี` : (c.overrides ? '\n(ไม่ได้แก้ผังบัญชี)' : '')));
-  };
+  }
 
   $('clearAllBtn').onclick = () => {
     const u = Store.usage();

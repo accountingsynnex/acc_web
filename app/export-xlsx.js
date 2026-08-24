@@ -621,15 +621,15 @@
      the store — the caller shows this first and asks. */
   function parse(wb, fileName) {
     const names = wb.SheetNames || [];
-    const info = wb.Sheets['_Export info'];
-    // The cover sheet is what makes a workbook ours. The company's own
-    // workpaper has TB sheets too, under the same names and a different
-    // layout, and telling someone "ไม่พบแถวบัญชี" about it four times over is
-    // no help — the answer is that it goes in the ordinary upload box.
+    // The cover sheet is what makes a workbook ours, and Import routes a
+    // dropped file here on finding it. Matched loosely — Excel lets someone
+    // rename a sheet, and "_export info" should still be the same sheet.
+    const infoName = names.find(n => String(n).trim().replace(/[\s_-]+/g, ' ').toUpperCase() === ' EXPORT INFO');
+    const info = infoName ? wb.Sheets[infoName] : null;
     if (!info) {
       return { ok: false, error: 'ไฟล์นี้ไม่ใช่ไฟล์ที่ส่งออกจากโปรแกรมนี้ (ไม่มีชีท "_Export info")\n\n'
-        + 'ถ้าเป็นไฟล์ Conso ต้นฉบับ ให้ใช้ช่อง "อัปโหลด Workpaper ทั้งไฟล์" ด้านล่างแทน — '
-        + 'ปุ่มนี้มีไว้สำหรับไฟล์ที่กดส่งออกจากหน้า Review แล้วเอาไปแก้ใน Excel' };
+        + 'ถ้าเป็นไฟล์ Conso ต้นฉบับ ระบบจะอ่านเป็น Workpaper ให้เองเมื่อวางในกล่องนำเข้า — '
+        + 'ทางนี้ใช้กับไฟล์ที่กดส่งออกจากหน้า Review แล้วเอาไปแก้ใน Excel' };
     }
     const entityCodes = RULEBOOK.entities.map(e => e.code);
     const tbSheets = names.filter(n => /^TB /.test(n) && entityCodes.includes(n.slice(3).trim()));

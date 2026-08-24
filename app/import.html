@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>FS Close Workspace — นำเข้างบทดลอง</title>
-<link rel="stylesheet" href="styles.css?v=2026-08-23.10" />
+<link rel="stylesheet" href="styles.css?v=2026-08-23.11" />
 </head>
 <body data-page="import">
 <div class="bg"><i></i></div>
@@ -32,11 +32,9 @@
       <div class="panel" style="padding:14px 17px;margin-bottom:20px">
         <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">
           <div id="usageBar" style="flex:1;min-width:260px"></div>
-          <button class="btn" id="reimportBtn" style="flex:none">นำไฟล์ Excel ที่ส่งออกไป กลับเข้ามา</button>
-          <input type="file" id="reimportInput" class="sr-only" accept=".xlsx,.xls" />
           <button class="linkish" id="clearAllBtn" style="text-decoration:none;color:var(--bad);flex:none">ล้างข้อมูลทั้งหมด</button>
         </div>
-        <div class="muted" style="font-size:12px;margin-top:9px">ทุกอย่างเก็บอยู่ในเบราว์เซอร์เครื่องนี้เท่านั้น ไม่ได้ส่งขึ้นเซิร์ฟเวอร์ — ถ้าพื้นที่เต็มจะนำเข้าเพิ่มไม่ได้ ให้ลบงวดที่ไม่ได้ใช้ออกที่ตาราง "งวดที่บันทึกไว้" ด้านล่าง · ไฟล์ Excel ที่ส่งออกจากหน้า <a class="linkish" href="review.html">Review</a> เอากลับเข้ามาได้ — แก้ยอดในชีท <b>TB &lt;บริษัท&gt;</b> หรือรายการในชีท <b>Eliminate / AJE+RJE-*</b> ใน Excel แล้วโยนไฟล์กลับที่ปุ่มนี้ ระบบจะคำนวณงบทั้งหมดใหม่จากที่แก้ (ชีทงบ เช่น Conso BS/PL เป็นผลลัพธ์ ระบบไม่อ่านกลับ) · เก็บไฟล์นั้นไว้กับ workpaper ของเดือนนั้นก็ใช้เป็นตัวสำรองข้อมูลได้เลย — ปุ่มล้างจะลบงบทดลอง · งวดที่บันทึกไว้ · รายการตัดบัญชี · ผังบัญชีที่แก้เอง · Budget ทั้งหมด กู้คืนไม่ได้</div>
+        <div class="muted" style="font-size:12px;margin-top:9px">ทุกอย่างเก็บอยู่ในเบราว์เซอร์เครื่องนี้เท่านั้น ไม่ได้ส่งขึ้นเซิร์ฟเวอร์ — ถ้าพื้นที่เต็มจะนำเข้าเพิ่มไม่ได้ ให้ลบงวดที่ไม่ได้ใช้ออกที่ตาราง "งวดที่บันทึกไว้" ด้านล่าง · ปุ่มล้างจะลบงบทดลอง · งวดที่บันทึกไว้ · รายการตัดบัญชี · ผังบัญชีที่แก้เอง · Budget ทั้งหมด กู้คืนไม่ได้</div>
       </div>
 
       <section>
@@ -48,11 +46,12 @@
         <div id="periodSwitcherNote" class="muted" style="display:none;font-size:12.5px;margin:-4px 0 12px"></div>
         <div class="wb-drop" id="wbDrop" role="button" tabindex="0">
           <span class="wbico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 9v11M4 14h16"/></svg></span>
-          <span style="min-width:0;flex:1"><span class="wbt" id="wbT">อัปโหลด Workpaper ทั้งไฟล์ (.xlsx) — เลือกได้หลายไฟล์พร้อมกัน</span><span class="wbd" id="wbD">ลากไฟล์งบ Conso ทั้งไฟล์มาวาง — ระบบแยก TB ทุกบริษัท (SYN · SVP · SYNIN · SWOP) ให้อัตโนมัติ · เลือก/ลากหลายไฟล์พร้อมกันได้ (เช่น 12 เดือนทั้งปี) แต่ละไฟล์จะถูกอ่านเดือนจากชื่อไฟล์แล้วบันทึกเป็นงวดของตัวเองอัตโนมัติ ไม่กระทบงวดปัจจุบัน</span><span class="wb-loadbar" id="wbLoad"><span></span></span></span>
+          <span style="min-width:0;flex:1"><span class="wbt" id="wbT">อัปโหลด Workpaper ทั้งไฟล์ (.xlsx) — เลือกได้หลายไฟล์พร้อมกัน</span><span class="wbd" id="wbD">ลากไฟล์งบ Conso ทั้งไฟล์มาวาง — ระบบแยก TB ทุกบริษัท (SYN · SVP · SYNIN · SWOP) ให้อัตโนมัติ · เลือก/ลากหลายไฟล์พร้อมกันได้ (เช่น 12 เดือนทั้งปี) แต่ละไฟล์จะถูกอ่านเดือนจากชื่อไฟล์แล้วบันทึกเป็นงวดของตัวเองอัตโนมัติ ไม่กระทบงวดปัจจุบัน · ไฟล์ Excel ที่ส่งออกจากเว็บนี้เอง วางที่นี่ได้เหมือนกัน ระบบดูออกเองว่าเป็นไฟล์แบบไหน</span><span class="wb-loadbar" id="wbLoad"><span></span></span></span>
           <span class="wbtag" id="wbTag">แยกให้อัตโนมัติ</span>
           <button type="button" class="wbrm" id="wbRemove" hidden>เอาไฟล์ออก</button>
         </div>
         <input type="file" id="wbInput" class="sr-only" accept=".xlsx,.xls" multiple />
+        <p class="muted" style="margin:0 0 14px;font-size:12.5px">ไฟล์ Excel ที่ส่งออกจากหน้า <a class="linkish" href="review.html">Review</a> วางที่กล่องเดียวกันนี้ได้เลย — แก้ยอดในชีท <b>TB &lt;บริษัท&gt;</b> หรือรายการในชีท <b>Eliminate / AJE+RJE-*</b> ใน Excel แล้วโยนไฟล์กลับมา ระบบจะคำนวณงบทั้งหมดใหม่จากที่แก้ (ชีทงบ เช่น Conso BS/PL เป็นผลลัพธ์ ระบบไม่อ่านกลับ) · เก็บไฟล์นั้นไว้กับ workpaper ของเดือนนั้น ก็ใช้เป็นตัวสำรองข้อมูลได้เลย</p>
         <div class="wb-or">หรือใส่ทีละบริษัท (CSV)</div>
         <p class="muted" style="margin:-4px 0 14px;font-size:12.5px;text-align:center">ถ้าไฟล์ Excel ของบริษัทนั้นมีหลายเดือนอยู่ในไฟล์เดียว (ชีตละเดือน เช่น <b>Jan 26 · Feb 26 · …</b>) ลากครั้งเดียว ระบบจะแยกเป็นงวดให้เองทุกเดือน โดยลงเป็น<b>งวดชุดแยก</b> ไม่ทับงบทดลองที่ใช้ทำงบ — ดูผลได้ที่หน้า <a class="linkish" href="costcenter.html">Cost Center</a></p>
         <div id="importLog" style="display:none"></div>
@@ -106,13 +105,13 @@
 </div>
 
 <script src="vendor/xlsx.full.min.js"></script>
-<script src="../engine/rulebook.js?v=2026-08-23.10"></script>
-<script src="../engine/group-engine.js?v=2026-08-23.10"></script>
-<script src="store.js?v=2026-08-23.10"></script>
-<script src="month-import.js?v=2026-08-23.10"></script>
-<script src="samples.js?v=2026-08-23.10"></script>
-<script src="shell.js?v=2026-08-23.10"></script>
-<script src="export-xlsx.js?v=2026-08-23.10"></script>
-<script src="import.js?v=2026-08-23.10"></script>
+<script src="../engine/rulebook.js?v=2026-08-23.11"></script>
+<script src="../engine/group-engine.js?v=2026-08-23.11"></script>
+<script src="store.js?v=2026-08-23.11"></script>
+<script src="month-import.js?v=2026-08-23.11"></script>
+<script src="samples.js?v=2026-08-23.11"></script>
+<script src="shell.js?v=2026-08-23.11"></script>
+<script src="export-xlsx.js?v=2026-08-23.11"></script>
+<script src="import.js?v=2026-08-23.11"></script>
 </body>
 </html>
