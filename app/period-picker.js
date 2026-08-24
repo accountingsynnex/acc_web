@@ -16,10 +16,16 @@
   // Cost Center is the one page cost-centre periods belong to, so it lists
   // them alongside the ordinary ones; everywhere else they stay out of sight.
   const scope = document.body.dataset.page === 'costcenter' ? 'all' : 'main';
+  const allowCC = scope === 'all';
 
   function paint() {
     const periods = Store.listPeriods(scope);
-    let current = Store.uiPeriod();
+    // Same allowance as the list: Store.uiPeriod() hands every other page ''
+    // for a cost-centre period, so asking without the flag here would reset
+    // Cost Center's own dropdown to the live period on every load. Leaving
+    // the stored key alone is also what lets Cost Center come back to the
+    // month it was last on after a trip through the other pages.
+    let current = Store.uiPeriod(allowCC);
     if (current && !periods.some(p => p.key === current)) {
       // The period this was left on got deleted (e.g. from Import's list) —
       // fall back to live rather than silently re-creating an empty period

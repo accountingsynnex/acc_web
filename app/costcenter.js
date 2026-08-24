@@ -226,7 +226,7 @@
     // (it's an ongoing target, not something any one closed period owns) —
     // the banner says so when viewing an archive so importing/clearing it
     // here doesn't look like it only touched this period.
-    const period = Store.uiPeriod();
+    const period = Store.uiPeriod(true);
     if (!Store.hasData(period)) {
       $('banner').innerHTML = `<div class="check no" style="margin-bottom:14px"><div class="ico">!</div><div><div class="t">ยังไม่ได้นำเข้างบทดลอง</div><div class="d">กด <b>นำเข้า TB รายศูนย์ต้นทุน</b> ด้านบนขวา แล้วเลือกไฟล์งบทดลองที่มีคอลัมน์ <b>Department</b> — หรือไปที่ <a class="linkish" href="import.html">Import TB</a></div></div></div>`;
       $('tiles').innerHTML = ''; $('overrunPanel').style.display = 'none'; $('deptPanel').style.display = 'none';
@@ -559,13 +559,13 @@
           // — it paints itself once, the same as when a period is picked.
           if (result.added.length) { Store.setUiPeriod(plan[plan.length - 1].key); location.reload(); return; }
         } else {
-          const sheet = wb.SheetNames.find(n => MonthTB.periodKeyFromSheetName(n) === Store.uiPeriod())
+          const sheet = wb.SheetNames.find(n => MonthTB.periodKeyFromSheetName(n) === Store.uiPeriod(true))
             || wb.SheetNames[0];
           const { rows, deptRows, dimNames } = buildRows(
             XLSX.utils.sheet_to_json(wb.Sheets[sheet], { header: 1, raw: true, defval: null }));
           if (!rows.length) throw new Error('ไม่พบแถวบัญชีในไฟล์');
           if (!deptRows.length && !confirm(`ชีต "${sheet}" ไม่มีคอลัมน์ Department — นำเข้าเป็นงบทดลองธรรมดาของ ${entity} ต่อไหม?`)) return;
-          Store.setTB(entity, file.name + ' › ' + sheet, rows, Store.uiPeriod(), deptRows,
+          Store.setTB(entity, file.name + ' › ' + sheet, rows, Store.uiPeriod(true), deptRows,
             deptRows.length ? sheet : '', dimNames);
           alert(`นำเข้า ${entity} จากชีต "${sheet}" แล้ว (${rows.length} บัญชี, ${deptRows.length} แถวมิติ)`);
         }
@@ -587,7 +587,7 @@
       // codes don't match the trial balance's produces a page of dashes,
       // which looks like the import failed. So the two are compared here and
       // the answer said plainly.
-      const d = Store.deptRows(Store.uiPeriod());
+      const d = Store.deptRows(Store.uiPeriod(true));
       const tbDepts = new Set((d && d.rows || []).map(r => r.dept));
       const budgetDepts = new Set(rec.rows.map(r => r.dept));
       const matched = [...budgetDepts].filter(x => tbDepts.has(x));

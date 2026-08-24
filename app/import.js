@@ -823,8 +823,14 @@
   // upload a prior period's TB straight into an archive instead — e.g. to
   // feed Ratios' SET-tab TTM feature the same quarter a year ago, without
   // ever touching the current close.
+  //
+  // Cost-centre periods are deliberately NOT offered: they hold one
+  // company's department-level trial balance, they are created by the
+  // multi-month import on its own, and they belong to Cost Center alone.
+  // Picking one here would aim a consolidated workpaper at it. They still
+  // appear in "งวดที่บันทึกไว้" below, which is where they get deleted.
   function renderPeriodSwitcher() {
-    const periods = Store.listPeriods('all');
+    const periods = Store.listPeriods('main');
     const opts = periods.map(p => `<option value="${esc(p.key)}">${esc(p.label)}</option>`).join('');
     $('periodSwitcher').innerHTML = `<option value="">งวดปัจจุบัน (กำลังทำงาน)</option>${opts}<option value="__new__">+ สร้างงวดใหม่…</option>`;
     $('periodSwitcher').value = activePeriod;

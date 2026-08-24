@@ -71,7 +71,17 @@
     // Persisted like everything else, so picking a period on one page
     // carries across normal navigation — this app has no client-side
     // router; every page load reads Store fresh from localStorage.
-    uiPeriod() { return this.data.uiPeriod || ''; },
+    /* A cost-centre period holds one company's department-level trial
+       balance, not a consolidated close (see CC_SUFFIX below). Only Cost
+       Center may act on one, so every other reader is handed '' — the live
+       period — even while Cost Center's own picker has one selected. That
+       makes the guarantee structural rather than a rule each page has to
+       remember: a consolidated statement cannot be built out of one by
+       accident. Pass true to opt in. */
+    uiPeriod(allowCostCentre) {
+      const key = this.data.uiPeriod || '';
+      return allowCostCentre || !this.isCostCentrePeriod(key) ? key : '';
+    },
     setUiPeriod(key) { this.data.uiPeriod = key || ''; this.persist(); },
 
     // Every TB accessor below takes an optional trailing periodKey, so pages
