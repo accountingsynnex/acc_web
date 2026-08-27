@@ -536,3 +536,60 @@ th.sortable .sarrow{display:inline-block;width:1em;margin-left:2px;font-size:8.5
    onto a second line. The sign-in card has room, so the mark is larger there. */
 .brand .mark.logo{width:34px;height:22px}
 .login-brand .mark.logo{width:46px;height:30px}
+
+/* ---------- User guide dialog ----------
+   A native <dialog>, so focus containment, Esc and inert-behind come from
+   the browser. The body scrolls; the header and footer stay put, because a
+   guide you have to scroll to the bottom of to find the close button is a
+   guide people learn to dread. */
+dialog.guide{width:min(680px,calc(100vw - 32px));max-height:min(84vh,780px);padding:0;border:0;
+  border-radius:var(--radius);color:var(--ink);background:var(--glass-strong);
+  border:1px solid var(--glass-brd);box-shadow:var(--shadow);
+  display:flex;flex-direction:column;overflow:hidden}
+dialog.guide:not([open]){display:none}
+dialog.guide::backdrop{background:rgba(18,24,34,.42);backdrop-filter:blur(2px)}
+.guide .g-head{display:flex;gap:16px;align-items:flex-start;padding:20px 22px 15px;border-bottom:1px solid var(--line)}
+.guide .g-head h2{margin:0;font-size:18px;font-weight:700;letter-spacing:-.02em}
+.guide .g-head p{margin:5px 0 0;font-size:12.5px;color:var(--muted);line-height:1.5}
+.guide .g-x{margin-left:auto;flex:none;width:30px;height:30px;padding:0;border-radius:8px;
+  border:1px solid transparent;background:none;color:var(--faint);font-size:14px;cursor:pointer}
+.guide .g-x:hover{color:var(--ink);border-color:var(--line-strong);background:var(--glass-hi)}
+.guide .g-body{overflow-y:auto;padding:4px 22px 18px;font-size:13px;line-height:1.6}
+.guide .g-body h3{margin:20px 0 9px;font-size:10.5px;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--faint)}
+.guide a{color:var(--accent-ink);font-weight:650;text-decoration:underline;text-underline-offset:2px}
+.guide b{font-weight:650}
+
+.guide .g-facts{display:grid;gap:7px;margin-top:16px}
+.guide .g-facts div{padding:9px 12px;border-radius:var(--radius-sm);font-size:12.5px;
+  background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 20%,transparent)}
+
+.guide .g-steps{list-style:none;margin:0;padding:0;display:grid;gap:11px}
+.guide .g-steps li{display:flex;gap:11px;align-items:flex-start}
+.guide .g-steps .g-n{flex:none;width:21px;height:21px;margin-top:1px;border-radius:50%;display:grid;place-items:center;
+  font-size:11px;font-weight:700;color:#fff;background:linear-gradient(160deg,#727b89,#3d444f)}
+.guide .g-steps p{margin:2px 0 0;font-size:12.5px;color:var(--muted)}
+
+.guide .g-out{list-style:none;margin:0;padding:0;display:grid;gap:8px;font-size:12.5px;color:var(--muted)}
+.guide .g-out li{padding-left:13px;position:relative}
+.guide .g-out li::before{content:'';position:absolute;left:0;top:8px;width:5px;height:5px;border-radius:50%;background:var(--faint)}
+
+.guide .g-tips{margin:0}
+.guide .g-tips dt{font-weight:650;font-size:12.5px;margin-top:12px}
+.guide .g-tips dt:first-child{margin-top:0}
+.guide .g-tips dd{margin:3px 0 0;font-size:12.5px;color:var(--muted);line-height:1.6}
+
+.guide .g-foot{display:flex;gap:14px;align-items:center;flex-wrap:wrap;
+  padding:14px 22px;border-top:1px solid var(--line);background:var(--glass-hi)}
+.guide .g-note{font-size:11.5px;color:var(--faint);line-height:1.5}
+.guide .g-foot .btn{margin-left:auto}
+
+/* the way back into the guide, above the signed-in row */
+.side-guide{display:flex;align-items:center;gap:9px;width:100%;margin-top:auto;padding:8px 10px;
+  border:1px solid transparent;border-radius:var(--radius-sm);background:none;color:var(--muted);
+  font:inherit;font-size:12.5px;font-weight:600;text-align:left;cursor:pointer}
+.side-guide:hover{color:var(--ink);border-color:var(--line);background:var(--glass-hi)}
+.side-guide svg{flex:none;color:var(--faint)}
+/* the footer had margin-top:auto to pin itself down; the guide button now
+   owns that job, or the two of them fight over the spare space */
+.side-guide + .side-foot{margin-top:0}
