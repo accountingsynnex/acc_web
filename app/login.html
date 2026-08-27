@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="th" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FS Close Workspace — เข้าสู่ระบบ</title>
+<link rel="stylesheet" href="styles.css?v=2026-08-23.13" />
+</head>
+<body data-page="login" class="login-body">
+<div class="bg"><i></i></div>
+
+<main class="login-wrap">
+  <div class="login-card panel">
+    <div class="login-brand">
+      <span class="mark">◈</span>
+      <span class="wm">Close Workspace<small>SYNNEX Consolidation</small></span>
+    </div>
+
+    <!-- one of these three is shown; login.js decides which -->
+    <form id="signInForm" class="login-form" hidden autocomplete="on">
+      <h1>เข้าสู่ระบบ</h1>
+      <p class="login-sub">ใส่ชื่อผู้ใช้และรหัสผ่านเพื่อเข้าใช้งานงบการเงิน</p>
+      <div class="fld"><label for="siName">ชื่อผู้ใช้</label>
+        <input type="text" id="siName" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" required /></div>
+      <div class="fld"><label for="siPw">รหัสผ่าน</label>
+        <input type="password" id="siPw" name="password" autocomplete="current-password" required /></div>
+      <div class="login-msg" id="siMsg" hidden></div>
+      <button class="btn login-go" type="submit" id="siBtn">เข้าสู่ระบบ</button>
+    </form>
+
+    <form id="setupForm" class="login-form" hidden autocomplete="on">
+      <h1>ตั้งค่าผู้ใช้คนแรก</h1>
+      <p class="login-sub">เครื่องนี้ยังไม่มีผู้ใช้ — ตั้งชื่อผู้ใช้และรหัสผ่านสำหรับเข้าใช้งาน</p>
+      <div class="fld"><label for="suName">ชื่อผู้ใช้</label>
+        <input type="text" id="suName" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" required /></div>
+      <div class="fld"><label for="suPw">รหัสผ่าน (อย่างน้อย 6 ตัวอักษร)</label>
+        <input type="password" id="suPw" name="new-password" autocomplete="new-password" required /></div>
+      <div class="fld"><label for="suPw2">ยืนยันรหัสผ่าน</label>
+        <input type="password" id="suPw2" name="new-password" autocomplete="new-password" required /></div>
+      <div class="login-msg" id="suMsg" hidden></div>
+      <button class="btn login-go" type="submit" id="suBtn">สร้างผู้ใช้แล้วเข้าใช้งาน</button>
+    </form>
+
+    <div id="signedIn" class="login-form" hidden>
+      <h1>เข้าสู่ระบบแล้ว</h1>
+      <p class="login-sub">กำลังใช้งานเป็น <b id="whoName"></b> <span class="muted" id="whoAt"></span></p>
+      <button class="btn login-go" type="button" id="goBtn">เข้าใช้งาน</button>
+      <div class="login-links">
+        <button class="linkish" type="button" id="addUserBtn">เพิ่มผู้ใช้</button>
+        <button class="linkish" type="button" id="chPwBtn">เปลี่ยนรหัสผ่าน</button>
+        <button class="linkish" type="button" id="signOutBtn">ออกจากระบบ</button>
+      </div>
+      <div id="manage" hidden></div>
+      <div class="login-users" id="userList"></div>
+    </div>
+
+    <p class="login-note">
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 9v4m0 4h.01M10.3 3.9L2 18a2 2 0 001.7 3h16.6a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg>
+      <span>เว็บนี้ทำงานในเบราว์เซอร์เครื่องนี้อย่างเดียว ไม่มีเซิร์ฟเวอร์ การเข้าสู่ระบบจึงกันคนที่บังเอิญเปิดเจอ ไม่ใช่ระบบความปลอดภัยที่กันคนตั้งใจเข้าถึงข้อมูลได้ · รหัสผ่านไม่ได้ถูกเก็บไว้ เก็บเป็นค่า PBKDF2-SHA256 ที่ย้อนกลับไม่ได้ · ผู้ใช้และรหัสผ่านอยู่เฉพาะเครื่องนี้ ไม่ตามไปเครื่องอื่น</span>
+    </p>
+  </div>
+  <div class="login-ver" id="loginVer"></div>
+</main>
+
+<script src="auth.js?v=2026-08-23.13"></script>
+<script src="login.js?v=2026-08-23.13"></script>
+</body>
+</html>

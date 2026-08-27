@@ -7,8 +7,14 @@
      release can't be half-applied by a cached file — and "is this the new one
      or the old one?" is answerable by looking, not by guessing. Bump this
      string in the same commit as anything worth telling apart. */
-  const BUILD = '2026-08-23.12';
+  const BUILD = '2026-08-23.13';
   window.APP_BUILD = BUILD;
+
+  /* Nobody signed in? Straight to the sign-in page, before this page paints
+     anything. Client-side only — see the note in auth.js about what that
+     can and cannot mean — but it is what makes login.html the way in rather
+     than a page you could only reach on purpose. */
+  if (window.Auth && !Auth.requireSession('login.html')) return;
 
   const ic = {
     import: '<path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>',
@@ -49,10 +55,40 @@
       ).join('')}</div>
     </nav>`).join('');
 
+  // Whoever is signed in, shown where the hardcoded "Accounting Team" used
+  // to sit. Initials come from the name so two people are told apart at a
+  // glance on a shared machine.
+  const sess = (window.Auth && Auth.session()) || null;
+  const who = sess ? sess.name : '';
+  const initials = who
+    ? who.trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()
+    : '—';
+  // When the session started, not "เข้าสู่ระบบแล้ว" — the name above already
+  // says that, and on a machine several people share, how long ago you signed
+  // in is the thing worth reading.
+  const since = (() => {
+    const d = sess && new Date(sess.at);
+    return d && !isNaN(d) ? 'เข้าเมื่อ ' + d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : 'ผู้ใช้งาน';
+  })();
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
   const side = document.getElementById('side');
   if (side) side.innerHTML =
     `<div class="brand"><span class="mark">◈</span><span class="wm">Close Workspace<small>SYNNEX Consolidation</small></span></div>
      ${nav}
-     <div class="side-foot"><div class="avatar">AT</div><div class="who">Accounting Team<small>Preparer</small></div></div>
+     <div class="side-foot">
+       <div class="avatar">${esc(initials)}</div>
+       <div class="who" title="${esc(who)}">${esc(who || 'ยังไม่ได้เข้าสู่ระบบ')}<small>${esc(since)}</small></div>
+       <button class="side-out" id="signOutBtn" title="ออกจากระบบ" aria-label="ออกจากระบบ">
+         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+       </button>
+     </div>
      <div class="side-ver" title="เวอร์ชันของไฟล์ที่เบราว์เซอร์โหลดอยู่จริง">build ${BUILD}</div>`;
+
+  const out = document.getElementById('signOutBtn');
+  if (out) out.onclick = () => {
+    if (!confirm('ออกจากระบบ?\n\nข้อมูลงบที่นำเข้าไว้ยังอยู่ครบ — แค่ต้องเข้าสู่ระบบใหม่')) return;
+    Auth.signOut();
+    location.replace('login.html');
+  };
 })();
