@@ -7,7 +7,7 @@
      release can't be half-applied by a cached file — and "is this the new one
      or the old one?" is answerable by looking, not by guessing. Bump this
      string in the same commit as anything worth telling apart. */
-  const BUILD = '2026-08-23.15';
+  const BUILD = '2026-08-23.16';
   window.APP_BUILD = BUILD;
 
   /* Nobody signed in? Straight to the sign-in page, before this page paints
@@ -15,6 +15,19 @@
      can and cannot mean — but it is what makes login.html the way in rather
      than a page you could only reach on purpose. */
   if (window.Auth && !Auth.requireSession('login.html')) return;
+
+  /* The SYNNEX mark, inline rather than <img src="assets/synnex-logo.svg">.
+     The app has to run straight off the filesystem, and Chrome refuses a
+     file:// subresource fetch from some contexts — an inline SVG cannot
+     fail to load, has no second request to cache-bust, and keeps its own
+     colours in both themes. The same markup is in login.html and in the
+     favicon; assets/synnex-logo.svg is the standalone copy to hand out. */
+  const LOGO = `<svg viewBox="0 0 916 610" aria-hidden="true" focusable="false">
+      <polygon fill="#a6a8ab" points="175,0 2.3,296 237,296 291,212 345,296 577,296 631,212 685,296 913.7,296 741,0 504,0 460,104 416,0"/>
+      <polygon fill="#e8114b" points="3.7,310 37.4,400 243,400 291,310 339,400 583,400 631,310 679,400 878.6,400 912.3,310"/>
+      <polygon fill="#00a99d" points="42.7,414 76.7,505 839.3,505 873.3,414"/>
+      <polygon fill="#0061af" points="81.9,519 116,610 400,610 460,519 520,610 800,610 834.1,519"/>
+    </svg>`;
 
   const ic = {
     import: '<path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>',
@@ -74,7 +87,7 @@
 
   const side = document.getElementById('side');
   if (side) side.innerHTML =
-    `<div class="brand"><span class="mark">◈</span><span class="wm">Close Workspace<small>SYNNEX Consolidation</small></span></div>
+    `<div class="brand"><span class="mark logo">${LOGO}</span><span class="wm">Close Workspace<small>SYNNEX Consolidation</small></span></div>
      ${nav}
      <div class="side-foot">
        <div class="avatar">${esc(initials)}</div>

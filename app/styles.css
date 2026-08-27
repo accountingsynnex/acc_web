@@ -521,3 +521,18 @@ th.sortable .sarrow{display:inline-block;width:1em;margin-left:2px;font-size:8.5
   font-size:11px;line-height:1.55;color:var(--faint)}
 .login-note svg{flex:none;margin-top:2px;color:var(--warn)}
 .login-ver{font-size:10.5px;color:var(--faint);letter-spacing:.03em}
+
+/* ---------- SYNNEX mark ----------
+   The logo replaces the ◈ glyph in the sidebar and on the sign-in card. It
+   carries its own brand colours, so the surrounding chip drops its glass
+   fill and border and just holds the shape — a tinted plate behind a
+   four-colour mark reads as a sticker, not a logo. The mark is wider than
+   it is tall, so the chip is too, and its own aspect is preserved. */
+.brand .mark.logo, .login-brand .mark.logo{
+  background:none;border:0;box-shadow:none;padding:0;display:grid;place-items:center}
+.brand .mark.logo svg, .login-brand .mark.logo svg{width:100%;height:auto;display:block}
+/* Sidebar: exactly the width the ◈ chip had, so swapping the mark in does
+   not steal the pixels the wordmark needs and wrap "SYNNEX CONSOLIDATION"
+   onto a second line. The sign-in card has room, so the mark is larger there. */
+.brand .mark.logo{width:34px;height:23px}
+.login-brand .mark.logo{width:46px;height:31px}
