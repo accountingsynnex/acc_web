@@ -7,7 +7,7 @@
      release can't be half-applied by a cached file — and "is this the new one
      or the old one?" is answerable by looking, not by guessing. Bump this
      string in the same commit as anything worth telling apart. */
-  const BUILD = '2026-08-23.16';
+  const BUILD = '2026-08-23.17';
   window.APP_BUILD = BUILD;
 
   /* Nobody signed in? Straight to the sign-in page, before this page paints
@@ -21,12 +21,17 @@
      file:// subresource fetch from some contexts — an inline SVG cannot
      fail to load, has no second request to cache-bust, and keeps its own
      colours in both themes. The same markup is in login.html and in the
-     favicon; assets/synnex-logo.svg is the standalone copy to hand out. */
-  const LOGO = `<svg viewBox="0 0 916 610" aria-hidden="true" focusable="false">
-      <polygon fill="#a6a8ab" points="175,0 2.3,296 237,296 291,212 345,296 577,296 631,212 685,296 913.7,296 741,0 504,0 460,104 416,0"/>
-      <polygon fill="#e8114b" points="3.7,310 37.4,400 243,400 291,310 339,400 583,400 631,310 679,400 878.6,400 912.3,310"/>
-      <polygon fill="#00a99d" points="42.7,414 76.7,505 839.3,505 873.3,414"/>
-      <polygon fill="#0061af" points="81.9,519 116,610 400,610 460,519 520,610 800,610 834.1,519"/>
+     favicon. Traced from the artwork in assets/synnex-logo.png, which is
+     the file as supplied; assets/synnex-logo.svg is the same trace as a
+     standalone file. */
+  const LOGO = `<svg viewBox="0 0 919 602" aria-hidden="true" focusable="false">
+      <polygon fill="#a5a6aa" points="176,3 405,3 461,100 519,3 752,3 912,292 680,292 632,216 586,292 339,292 287,214 235,292 3,292"/>
+      <polygon fill="#ee1b4d" points="2,313 235,313 283,397 50,397"/>
+      <polygon fill="#ee1b4d" points="339,313 583,313 629,397 289,397"/>
+      <polygon fill="#ee1b4d" points="679,313 910,313 864,397 632,397"/>
+      <polygon fill="#03aaae" points="65,422 854,422 807,504 114,504"/>
+      <polygon fill="#0371bc" points="129,527 458,527 408,601 170,601"/>
+      <polygon fill="#0371bc" points="464,527 792,527 753,601 514,601"/>
     </svg>`;
 
   const ic = {

@@ -534,5 +534,5 @@ th.sortable .sarrow{display:inline-block;width:1em;margin-left:2px;font-size:8.5
 /* Sidebar: exactly the width the ◈ chip had, so swapping the mark in does
    not steal the pixels the wordmark needs and wrap "SYNNEX CONSOLIDATION"
    onto a second line. The sign-in card has room, so the mark is larger there. */
-.brand .mark.logo{width:34px;height:23px}
-.login-brand .mark.logo{width:46px;height:31px}
+.brand .mark.logo{width:34px;height:22px}
+.login-brand .mark.logo{width:46px;height:30px}
