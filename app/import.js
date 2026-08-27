@@ -540,20 +540,6 @@
     ingestWorkbooksBatch(xlsxFiles, files.length - xlsxFiles.length);
   }
 
-  async function loadSamples() {
-    const files = { SVP: 'TB_SVP_2026-06.csv', SYNIN: 'TB_SYNIN_2026-06.csv', SWOP: 'TB_SWOP_2026-06.csv', SYN: 'TB_SYN_2026-06.csv' };
-    for (const [ent, fn] of Object.entries(files)) {
-      try {
-        let text = null;
-        if (typeof SAMPLES !== 'undefined' && SAMPLES[ent]) text = SAMPLES[ent].text;   // works offline (file://)
-        else { const res = await fetch('../test/' + fn); if (res.ok) text = await res.text(); }
-        if (!text) continue;
-        const { rows, deptRows, dimNames } = parseTB(text);
-        if (rows.length) Store.setTB(ent, fn, rows, activePeriod, deptRows, '', dimNames);
-      } catch (e) { /* skip */ }
-    }
-    renderAll();
-  }
 
   function renderUploads() {
     $('uploads').innerHTML = ENTITIES.map(ent => {
@@ -644,8 +630,7 @@
 
     if (!res) {
       $('rows').innerHTML = `<tr><td colspan="5"><div class="results-empty"><div class="big">ยังไม่มีข้อมูล</div>
-        <div>อัปโหลดไฟล์ TB ด้านบน หรือ <span class="linkish" id="emptySample">ลองข้อมูลตัวอย่าง</span></div></div></td></tr>`;
-      const es = $('emptySample'); if (es) es.onclick = loadSamples;
+        <div>ลากไฟล์ Workpaper งบรวม (.xlsx) มาวางที่กล่องด้านบน หรือใส่ทีละบริษัทเป็น CSV</div></div></td></tr>`;
     } else {
       const list = (filter === 'new' ? res.lines.filter(l => l.status === 'new') : res.lines)
         .slice().sort((a, b) => Math.abs(b.closing) - Math.abs(a.closing));
@@ -879,7 +864,6 @@
   $('filterSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
     filter = b.dataset.f; $('filterSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); renderAll();
   });
-  $('sampleBtn').onclick = loadSamples;
   $('nextBtn').onclick = () => { location.href = 'mapping.html'; };
   $('themeBtn').onclick = () => { const r = document.documentElement; r.setAttribute('data-theme', r.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'); };
 
