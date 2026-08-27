@@ -25,7 +25,7 @@
   // Every formula lives in engine/ratio-engine.js so this page and the
   // Excel export compute the same numbers from the same code.
   const {
-    monthsFromKey, shiftMonthKey, plAt, bsAt, BASE, sumSpec, unreachableGroups,
+    monthsFromKey, shiftMonthKey, bsAt, unreachableGroups,
     RATIO_SPEC, computeTabMetrics, ctxFor,
   } = RatioEngine;
 

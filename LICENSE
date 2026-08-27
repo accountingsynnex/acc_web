@@ -1,0 +1,22 @@
+Copyright (c) 2026 SYNNEX (Thailand) Public Company Limited.
+All rights reserved.
+
+This software is proprietary and confidential. It is provided for internal
+use by SYNNEX (Thailand) PCL and parties it authorises in writing. No part
+of it may be copied, modified, distributed, sublicensed or used to create a
+derivative work without prior written permission from the copyright holder.
+
+This repository is public for hosting convenience (GitHub Pages). Public
+visibility is not a grant of any licence.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+--------------------------------------------------------------------------
+Third-party components, redistributed under their own licences:
+
+  app/vendor/xlsx.full.min.js   SheetJS Community Edition — Apache-2.0
+  app/vendor/chart.umd.js       Chart.js — MIT
+  fonts embedded in app/styles.css
+                                IBM Plex Sans Thai — SIL Open Font License 1.1

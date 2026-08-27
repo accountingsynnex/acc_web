@@ -1,0 +1,72 @@
+# Lint and test on every push and pull request.
+#
+# Deliberately separate from deployment: GitHub Pages publishes `main`
+# through its own built-in workflow, and this one does not touch it. A red
+# build here does NOT block that publish — making it do so needs a branch
+# protection rule on `main` requiring this check, which is the recommended
+# next step and is a repository setting rather than a file.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+# A second push to the same branch cancels the run still in flight; only the
+# newest commit's result is worth waiting for.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      # `npm ci` and not `npm install`: it installs exactly what the lock
+      # file pins, and fails if the lock file and package.json disagree —
+      # which is the point of running this on a build agent at all.
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      # Only the browser Chromium is needed, and the browser binary is the
+      # slow part of this job, so it is cached across runs by version.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser smoke test
+        run: npm run test:browser
+
+  # The fixtures are generated, so a change to the generator that was never
+  # re-run leaves the committed CSVs stale — and the tests would then be
+  # passing against data no longer produced by the tool that claims to
+  # produce it. Regenerating and diffing catches that.
+  fixtures:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Fixtures match their generator
+        run: |
+          python3 tools/make_sample_tb.py
+          if ! git diff --quiet -- test/; then
+            echo "::error::test/ fixtures differ from tools/make_sample_tb.py output — run it and commit the result"
+            git diff --stat -- test/
+            exit 1
+          fi

@@ -1,6 +1,8 @@
 /* Store smoke test — per-period journals, the piece that lets an archived
    period carry its own eliminations instead of only ever the live close's.
    Run: node test/store.test.js  */
+const { browserGlobals } = require('./helpers.js');
+browserGlobals();
 const { Store } = require('../app/store.js');
 
 let failures = 0;
@@ -78,5 +80,32 @@ Store.importJournals({ journals: [{ id: 'R1', lines: [{ code: '9999999', amount:
 ok(Store.journals('2025-06').length === 1 && Store.journals('2025-06')[0].id === 'R1', 'importJournals(payload, periodKey) replaces that period\'s own journals');
 ok(Store.journals().length === beforeLive, 'importJournals into a period leaves the live journal set untouched');
 
+
+/* ---- storage schema version -------------------------------------------
+   This blob is the app's database and there is no migration tool, so the
+   only place stored data can be reshaped is Store.load(). These pin the
+   contract the next schema change has to keep. */
+const KEY = 'fs-close-workspace-v1';
+const reload = raw => { localStorage.setItem(KEY, JSON.stringify(raw)); Store.data = {}; Store.load(); };
+
+// Data written before versioning existed carries no `schema` at all, and
+// must keep loading — this is what is in every user's browser today.
+reload({ tb: { SYN: { fileName: 'old.csv', rows: [{ code: '1110000', name: 'Cash', closing: 42, opening: null }] } }, mappings: { 9: { group: 'g' } } });
+ok(Store.tb('SYN').rows[0].closing === 42, 'unversioned data from before this change still loads');
+ok(Store.mappings()['9'] !== undefined, 'and its saved mappings come with it');
+ok(Store.data.schema === Store.SCHEMA, 'and it is stamped with the current schema on the way in');
+
+// A blob written by a NEWER build cannot be read and must not be half-read
+// into the old shape — a tab left open across a deploy, or a shared machine.
+reload({ schema: Store.SCHEMA + 5, tb: { SYN: { fileName: 'future.csv', rows: [{ code: '1', name: 'x', closing: 1 }] } } });
+ok(Store.entitiesLoaded().length === 0, 'data from a newer build is not read into the current shape');
+ok(Store.futureSchema === Store.SCHEMA + 5, 'and the newer version is recorded so the app can say so');
+const onDisk = JSON.parse(localStorage.getItem(KEY));
+ok(onDisk.schema === Store.SCHEMA + 5 && onDisk.tb.SYN, 'and it is left untouched on disk rather than overwritten');
+
+// Nothing stored at all is a first visit, not an error.
+localStorage.removeItem(KEY);
+Store.data = {}; Store.load();
+ok(Store.data.schema === Store.SCHEMA && Store.entitiesLoaded().length === 0, 'an empty browser starts at the current schema');
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
 process.exit(failures ? 1 : 0);

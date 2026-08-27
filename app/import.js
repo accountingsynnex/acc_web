@@ -52,7 +52,6 @@
   }
 
   const { periodKeyFromSheetName, labelFromKey } = MonthTB;
-  const TH_MONTHS = MonthTB.TH_MONTHS;
   const money = n => {
     const a = Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     return n < 0 ? '(' + a + ')' : a;

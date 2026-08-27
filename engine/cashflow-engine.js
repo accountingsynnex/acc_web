@@ -86,6 +86,12 @@
   // respectively (both cumulative-since-fiscal-year-start readings — this
   // function takes their difference internally, see periodPL above).
   function computeCashFlow(bs, closingPL, openingBs, openingPL) {
+    /* Without an opening position there is no movement to derive, and this
+       statement is nothing but movement. Every caller already checks for
+       opening balances before reaching here, so this states the contract
+       rather than fixing a live bug — a future caller gets null back instead
+       of a TypeError from inside periodPL. */
+    if (!bs || !closingPL || !openingBs || !openingPL) return null;
     const pl = periodPL(closingPL, openingPL);
     const netProfit = pl.netProfit;
 

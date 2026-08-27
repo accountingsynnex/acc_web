@@ -5,11 +5,53 @@
 (function (global) {
   const KEY = 'fs-close-workspace-v1';
 
+  /* This blob IS the database. There is no server and no schema migration
+     tool, so the only chance to reshape stored data is on the way in, here,
+     against whatever version last wrote it.
+
+     To change the shape of stored data:
+       1. bump SCHEMA
+       2. add a `case` to migrate() that turns the previous version into
+          the new one, in place, on `d`
+       3. add a test to test/store.test.js that starts from real old-shape
+          data and asserts the new shape reads correctly
+     Cases run in order and fall through, so data three versions old is
+     brought forward one step at a time. Never edit an old case: someone's
+     browser still holds data that only that code knows how to read. */
+  const SCHEMA = 1;
+
+  function migrate(d) {
+    const from = typeof d.schema === 'number' ? d.schema : 0;
+    if (from >= SCHEMA) { d.schema = SCHEMA; return d; }
+    switch (from) {
+      // v0 -> v1: the shape shipped before versioning existed. Every field
+      // it can be missing is defaulted in load() below and always has been,
+      // so there is nothing to move — this only stamps the version on.
+      case 0:
+        d.schema = 1;
+        break;
+      // no default: an unknown older version cannot be repaired by guessing
+    }
+    d.schema = SCHEMA;
+    return d;
+  }
+
   const Store = {
-    data: { tb: {}, mappings: {} },   // tb: entity -> {fileName, rows}; mappings: code -> rule
+    data: { schema: SCHEMA, tb: {}, mappings: {} },   // tb: entity -> {fileName, rows}; mappings: code -> rule
 
     load() {
       try { const s = localStorage.getItem(KEY); if (s) this.data = JSON.parse(s); } catch (e) { /* ignore */ }
+      /* Data written by a NEWER build than this one — a browser tab left
+         open across a deploy, or a shared machine where someone loaded the
+         new version first. It is not readable and must not be half-read
+         into the current shape, so it is left exactly as it is on disk and
+         this session runs empty rather than corrupting it. */
+      if (this.data && this.data.schema > SCHEMA) {
+        this.futureSchema = this.data.schema;
+        this.data = { schema: SCHEMA, tb: {}, mappings: {} };
+      } else {
+        this.data = migrate(this.data || {});
+      }
       if (!this.data.tb) this.data.tb = {};
       if (!this.data.mappings) this.data.mappings = {};
       if (!this.data.journals) this.data.journals = [];
@@ -20,6 +62,7 @@
       // Eliminate/AJE sheets, or restored from a journals .json export.
       return this;
     },
+    SCHEMA,
     /* Browsers cap localStorage at about 5 MB, and a department-level TB for
        several months gets there. A failed write used to be swallowed, which
        looks like nothing happened until a reload shows the period back to
@@ -57,8 +100,9 @@
        app, so this really is back to a first visit — the caller warns. */
     clearAll() {
       try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
-      this.data = { tb: {}, mappings: {} };
+      this.data = { schema: SCHEMA, tb: {}, mappings: {} };
       this.storageFull = false;
+      this.futureSchema = 0;
       this.load();
     },
 
@@ -171,8 +215,8 @@
     },
     hasDeptData(periodKey) { const tb = this.tbFor(periodKey); return Object.keys(tb).some(e => (tb[e].deptRows || []).length); },
 
-    /* Cost-centre budget: {"<code> <dept>": amount} plus a dept-only
-       fallback {" <dept>": amount}. Imported as its own file — no
+    /* Cost-centre budget: {"<code>|<dept>": amount} plus a dept-only
+       fallback {"|<dept>": amount}. Imported as its own file — no
        accounting system exports budget alongside actuals. */
     setBudget(rec, fileName) {
       // `rec` is what parseBudget returned: the detail rows (account ×

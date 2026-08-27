@@ -1,0 +1,23 @@
+{
+  "name": "fs-close-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Static, offline-first web app for a group financial close: import trial balances, map accounts, apply eliminations, read consolidated statements.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node test/run.js",
+    "test:unit": "node test/run.js --unit",
+    "test:browser": "node test/browser.test.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "serve": "node tools/serve.js",
+    "fixtures": "python3 tools/make_sample_tb.py"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "eslint": "^9.17.0"
+  }
+}
