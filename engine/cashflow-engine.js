@@ -160,9 +160,31 @@
     const shareNow = groupIn(bs.equity, 'Equity', 'ทุนที่ออกและชำระแล้ว') + groupIn(bs.equity, 'Equity', 'ส่วนเกินทุนหุ้นทุนซื้อคืน') + groupIn(bs.equity, 'Equity', 'ส่วนเกินมูลค่าหุ้นสามัญ');
     const shareOpen = groupIn(openingBs.equity, 'Equity', 'ทุนที่ออกและชำระแล้ว') + groupIn(openingBs.equity, 'Equity', 'ส่วนเกินทุนหุ้นทุนซื้อคืน') + groupIn(openingBs.equity, 'Equity', 'ส่วนเกินมูลค่าหุ้นสามัญ');
     fin.add('ทุนเรือนหุ้น/ส่วนเกินมูลค่าหุ้น (สุทธิ)', shareNow - shareOpen);
-    const retainedNow = groupIn(bs.equity, 'Equity', 'Retained profit') + groupIn(bs.equity, 'Equity', 'Profit/loss for current month') + groupIn(bs.equity, 'Equity', 'จัดสรรแล้ว');
-    const retainedOpen = groupIn(openingBs.equity, 'Equity', 'Retained profit') + groupIn(openingBs.equity, 'Equity', 'Profit/loss for current month') + groupIn(openingBs.equity, 'Equity', 'จัดสรรแล้ว');
-    fin.add('เงินปันผลจ่าย (ประมาณจากการเปลี่ยนแปลงกำไรสะสม)', -((retainedNow - retainedOpen) - netProfit));
+    /* There is deliberately no inferred dividend line here.
+
+       It used to read the movement in retained earnings against net profit
+       and call the shortfall a distribution:
+
+         -((retainedNow - retainedOpen) - netProfit)
+
+       which is the right identity when the period's result has been closed
+       to retained earnings. In this app it never has: a trial balance keeps
+       the result in the P&L accounts and FS.buildBS() adds netProfit into
+       total liabilities+equity separately, so retained earnings does not
+       move while net profit does — including at a December close, because
+       the comparison is always closing against opening WITHIN one fiscal
+       year. The line therefore reported a distribution equal to the whole
+       period profit, every period, that nobody had made. Measured on the
+       fixture books it also inflated the unexplained difference by its own
+       size, from 246M to 473M.
+
+       Removed rather than corrected, on the finance team's call. The
+       consequence to know: a REAL movement in retained earnings — an actual
+       dividend, or an appropriation to legal reserve — is no longer shown on
+       its own line and falls into "ผลต่างที่ยังไม่ระบุ" below, where it is
+       still disclosed rather than hidden. Showing that movement on its own
+       line, without the netProfit term, is the one-line change if it is ever
+       wanted. See KNOWN-LIMITATIONS.md §1. */
     if (financeCosts) fin.add('ดอกเบี้ยจ่าย', financeCosts);
 
     const cfi = inv.total, cff = fin.total;

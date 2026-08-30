@@ -99,34 +99,33 @@ eq(flat.workingCapital.length, 0, 'and lists no working-capital movements at all
 eq(CashFlowEngine.computeCashFlow(close.bs, close.pl, null, null), null,
    'no opening balance sheet returns null instead of a fabricated statement');
 
-/* --- the inferred distribution -----------------------------------------
-   The engine reads the movement in retained earnings against net profit and
-   calls the shortfall a dividend. Given the model described at the top —
-   the period's result sits in the P&L accounts, not in retained earnings —
-   that shortfall is the whole period profit on any in-year comparison, so
-   the statement reports a distribution nobody made and carries an equal and
-   opposite `unexplained`.
+/* --- no inferred distribution -------------------------------------------
+   The engine used to read the movement in retained earnings against net
+   profit and call the shortfall a dividend. Given the model described at the
+   top — the period's result sits in the P&L accounts, not in retained
+   earnings — that shortfall was the whole period profit on every comparison
+   this app produces, so the statement reported a distribution nobody had
+   made and inflated the unexplained difference by the same amount.
 
-   Pinned here as CURRENT behaviour, deliberately not "fixed": changing it
-   moves published cash flow figures and is an accounting decision, not a
-   refactor. See KNOWN-LIMITATIONS.md. When it is addressed, this block is
-   the test to rewrite first.                                              */
-const distribution = cf.financing.find(r => /ปันผล/.test(r.label));
-ok(distribution, 'a distribution line is inferred from retained earnings not moving');
-near(Math.abs(distribution ? distribution.value : 0), 300,
-     'and it is the size of the whole period profit');
-near(cf.unexplained, -300, 'leaving an equal and opposite unexplained difference');
+   Removed on the finance team's call. These assertions exist so it cannot
+   come back by accident: an inferred dividend is a number presented to
+   readers of a statutory statement, and it has to be a real one.           */
+eq(cf.financing.filter(r => /ปันผล|dividend/i.test(r.label)).length, 0,
+   'no dividend is inferred from retained earnings not moving');
+ok(cf.financing.every(r => Math.abs(Math.abs(r.value) - Math.abs(cf.netProfit)) > 0.01),
+   'and no financing line happens to be the size of the whole period profit');
 
-/* When retained earnings DOES move by the profit — a year-end close where
-   the result has been posted to equity — no distribution is inferred. This
-   is the shape the logic was written for, and it still works. The fixture
-   balances because the extra 300 credit in retained is offset by 300 more
-   in assets. */
-const openY = shape(build({ cash: 100, ar: 200, ap: -150, equity: -150 }));
-const closeY = shape(build({ cash: 690, ar: 250, ap: -190, equity: -150, revenue: -300, retained: -300 }));
-near(closeY.bs.diff, 0, 'year-end fixture balances');
-const cfY = CashFlowEngine.computeCashFlow(closeY.bs, closeY.pl, openY.bs, openY.pl);
-eq(cfY.financing.filter(r => /ปันผล/.test(r.label)).length, 0,
-   'retained earnings moving by the profit infers no distribution');
+/* A real movement in retained earnings — an actual dividend, or an
+   appropriation to legal reserve — now falls into `unexplained` rather than
+   getting a line of its own. That is a deliberate trade, and disclosure
+   rather than concealment: the identity below still holds, so the money is
+   still on the statement, just not named. */
+const openR = shape(build({ cash: 100, ar: 200, ap: -150, equity: -150 }));
+const closeR = shape(build({ cash: 50, ar: 200, ap: -150, equity: -150, retained: 50 }));
+near(closeR.bs.diff, 0, 'appropriation fixture balances');
+const cfR = CashFlowEngine.computeCashFlow(closeR.bs, closeR.pl, openR.bs, openR.pl);
+near(cfR.netIncrease, -50, 'the cash actually left');
+near(cfR.unexplained, cfR.netIncrease - (cfR.cfo + cfR.cfi + cfR.cff),
+     'and it is disclosed on the unexplained line rather than dropped');
 
 done();

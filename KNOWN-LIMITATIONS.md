@@ -7,39 +7,57 @@ Ordered by how likely each is to matter.
 
 ---
 
-## 1. The cash flow statement infers a distribution that was never made
+## 1. The cash flow statement does not reconcile fully
 
-**Real defect. Needs an accountant's decision, not just a code change.**
+**Partly inherent to the indirect method, partly still open.**
 
-`cashflow-engine.js` reads the movement in retained earnings against net
-profit and reports the shortfall as a dividend:
+Nothing in a trial balance says "cash paid to suppliers", so the statement is
+reconstructed from the movement between the opening and closing balance
+sheets plus the period's P&L. Whatever the operating, investing and financing
+sections do not account for is disclosed on its own line —
+**"ผลต่างที่ยังไม่ระบุ"** — rather than folded silently into a named one.
+
+What lands there:
+
+- **FX translation** and **trade-finance facilities** that may follow a
+  different classification policy than the one assumed here. Neither is
+  modelled. This part is inherent.
+- **A real movement in retained earnings** — an actual dividend, or an
+  appropriation to legal reserve. It used to get its own line; see below.
+
+The statement is honest about the gap, but it is a gap: the Review page
+flags it, and it should not be filed as a statutory cash flow statement
+without reconciling the remainder by hand.
+
+### An inferred dividend used to make this worse — removed
+
+The financing section carried:
 
 ```js
 fin.add('เงินปันผลจ่าย (…)', -((retainedNow - retainedOpen) - netProfit));
 ```
 
-But in this app the current period's result sits in the **P&L accounts**, not
-in retained earnings (see ARCHITECTURE.md §4). Between two dates inside one
-fiscal year, retained earnings does not move, so the shortfall is the entire
-period profit. The statement therefore shows:
+That is the right identity **when the period's result has been closed to
+retained earnings**. In this app it never has: a trial balance keeps the
+result in the P&L accounts and `FS.buildBS()` adds `netProfit` into total
+liabilities+equity separately (ARCHITECTURE.md §4), so retained earnings does
+not move while net profit does — including at a December close, because the
+comparison is always closing against opening *within* one fiscal year.
 
-- a **distribution equal to the whole period profit**, which nobody paid, and
-- an equal and opposite figure on the **"ผลต่างที่ยังไม่ระบุ" (unexplained)**
-  line
+So the line reported a distribution equal to the whole period profit, every
+period, that nobody had made — and inflated the unexplained difference by its
+own size. Measured on the fixture books: **473M with the line, 246M without
+it**, against a real net cash movement of 2.9M.
 
-Both are visible on the Cash Flow page today. The unexplained line was
-described as an inherent limit of the indirect method; it is partly that, but
-this component of it is a modelling error and is reproducible.
+Removed on the finance team's call. The cost is that a genuine movement in
+retained earnings no longer gets a line of its own and falls into
+"ผลต่างที่ยังไม่ระบุ" instead. Showing that movement — `-(retainedNow -
+retainedOpen)`, without the `netProfit` term — is a one-line change if it is
+ever wanted, and `test/cashflow-engine.test.js` has the assertions that stop
+the old formula coming back by accident.
 
-Pinned as current behaviour in `test/cashflow-engine.test.js` — deliberately
-not "fixed" in passing, because changing it moves published cash flow figures
-and is an accounting decision. When it is addressed, that test block is the
-first thing to rewrite.
-
-The other contributors to `unexplained` are genuine: FX translation and
-trade-finance facilities that may follow a different classification policy
-are not modelled. Whatever is left over is disclosed on its own line rather
-than folded silently into a named one, which is the right default.
+**Anyone comparing cash flow figures across the change should know the
+financing section and the unexplained line both moved.**
 
 ## 2. Sign-in is a door, not a wall
 
