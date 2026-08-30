@@ -80,7 +80,7 @@ tools/              fixture generator, password generator
 
 ```sh
 npm install            # dev tooling only; the app itself has no dependencies
-npm test               # unit suites + browser smoke test
+npm test               # unit suites, browser smoke test, design consistency
 npm run test:unit      # unit only — needs no browser
 npm run lint
 ```

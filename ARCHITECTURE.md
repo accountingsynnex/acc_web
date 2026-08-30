@@ -56,7 +56,7 @@ engine/               pure logic: no DOM, runs in Node, unit-tested
   cashflow-engine.js  indirect cash flow
   ratio-engine.js     ratios, cash-conversion cycle, TTM
   anomaly-engine.js   the checks on the Review page
-test/                 unit suites + browser smoke test + fixtures
+test/                 unit suites, browser + design checks, fixtures
 tools/                fixture generator, password generator
 ```
 

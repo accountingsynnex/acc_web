@@ -109,12 +109,13 @@ whoever it would incriminate.
 ## 5. Coverage is uneven
 
 `engine/` and `app/store.js`, `app/fs.js`, `app/export-xlsx.js` have unit
-suites, and a Playwright smoke test covers sign-in, all ten pages, a real
-import and a balancing balance sheet.
+suites; a Playwright smoke test covers sign-in, all ten pages, a real import
+and a balancing balance sheet; and a design check asserts every component
+resolves the same way on every page.
 
-The **page scripts have no unit tests** — `import.js` (870 lines),
-`ratios.js`, `costcenter.js` are covered only by the smoke test loading them
-without errors. `import.js` in particular carries a lot of file-shape
+The **page scripts have no unit tests** — `import.js`, `ratios.js` and
+`costcenter.js`, the three largest, are covered only by the browser suite
+loading them without errors. `import.js` in particular carries a lot of file-shape
 guesswork that would benefit from tests against real workbooks.
 
 ## 6. Input formats are inferred, not specified
@@ -155,7 +156,7 @@ Not problems — choices whoever takes this over should make deliberately:
   module loading. That trade is the reason it has not been done.
 - **types.** No TypeScript and no JSDoc annotations. The `engine/` modules
   are the ones where types would pay for themselves.
-- **one 595-line `styles.css`.** Fine at this size; the seams are marked with
-  section comments if it needs splitting.
-- **`import.js` is 870 lines** and is the file most in need of being broken
-  up. The file-shape detection is separable from the UI.
+- **one `styles.css`.** Fine at its current size; the seams are marked with
+  section comments if it ever needs splitting.
+- **`import.js`** is the file most in need of being broken up. The
+  file-shape detection is separable from the UI.

@@ -21,10 +21,10 @@ text there; ask for the password).
 
 ```sh
 npm run lint         # must be clean
-npm test             # unit suites + browser smoke test
+npm test             # unit suites, browser smoke test, design consistency
 ```
 
-CI runs both on every push. It does **not** currently block the GitHub Pages
+CI runs all of it on every push. It does **not** currently block the GitHub Pages
 deployment — that is a branch protection rule on `main` requiring the `test`
 check, and enabling it is recommended.
 
@@ -65,7 +65,7 @@ symptoms make no sense. The smoke test asserts every page agrees.
 
 ```sh
 # what the bump looks like — OLD is the current stamp, NEW is yours
-OLD=$(grep -oP "BUILD = '\K[^']+" app/shell.js); NEW=2026-08-23.21
+OLD=$(grep -oP "BUILD = '\K[^']+" app/shell.js); NEW=<today>.<n>
 grep -rl "$OLD" --include=*.js --include=*.html . | xargs sed -i "s/$OLD/$NEW/g"
 ```
 
