@@ -11,6 +11,8 @@
     "test": "node test/run.js",
     "test:unit": "node test/run.js --unit",
     "test:browser": "node test/browser.test.js",
+    "test:design": "node test/design.test.js",
+    "design:update": "node test/design.test.js --update",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "serve": "node tools/serve.js",

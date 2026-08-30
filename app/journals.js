@@ -109,16 +109,16 @@
   function lineRow(code = '', name = '', amount = '') {
     const row = document.createElement('div');
     row.className = 'mline';
-    row.innerHTML = `<div class="fld"><label>รหัสบัญชี</label><input class="ml-code" value="${esc(code)}" /></div>
-      <div class="fld"><label>ชื่อบัญชี</label><input class="ml-name" value="${esc(name)}" /></div>
-      <div class="fld"><label>Dr./(Cr.)</label><input class="ml-amt" type="number" step="0.01" value="${esc(amount)}" /></div>
+    row.innerHTML = `<div class="fld"><label>รหัสบัญชี</label><input class="js-ml-code" value="${esc(code)}" /></div>
+      <div class="fld"><label>ชื่อบัญชี</label><input class="js-ml-name" value="${esc(name)}" /></div>
+      <div class="fld"><label>Dr./(Cr.)</label><input class="js-ml-amt" type="number" step="0.01" value="${esc(amount)}" /></div>
       <button class="ml-del" type="button" title="ลบบรรทัด">✕</button>`;
     row.querySelector('.ml-del').onclick = () => { row.remove(); updateNet(); };
-    row.querySelectorAll('.ml-amt').forEach(i => i.oninput = updateNet);
+    row.querySelectorAll('.js-ml-amt').forEach(i => i.oninput = updateNet);
     return row;
   }
   function updateNet() {
-    const total = [...$('mLines').querySelectorAll('.ml-amt')].reduce((s, i) => s + (parseFloat(i.value) || 0), 0);
+    const total = [...$('mLines').querySelectorAll('.js-ml-amt')].reduce((s, i) => s + (parseFloat(i.value) || 0), 0);
     $('mNet').textContent = `ยอดรวม: ${money(total)}${Math.abs(total) > 1 ? ' (ยังไม่เป็น 0)' : ''}`;
   }
   function resetForm(journal) {
@@ -140,9 +140,9 @@
   function saveManual() {
     const description = $('mDesc').value.trim();
     const lines = [...$('mLines').querySelectorAll('.mline')].map(row => ({
-      code: row.querySelector('.ml-code').value.trim(),
-      name: row.querySelector('.ml-name').value.trim(),
-      amount: parseFloat(row.querySelector('.ml-amt').value),
+      code: row.querySelector('.js-ml-code').value.trim(),
+      name: row.querySelector('.js-ml-name').value.trim(),
+      amount: parseFloat(row.querySelector('.js-ml-amt').value),
     })).filter(l => l.code && isFinite(l.amount) && l.amount !== 0);
     if (!description) { alert('กรอกคำอธิบายรายการก่อน'); return; }
     if (lines.length < 2) { alert('ต้องมีอย่างน้อย 2 บรรทัด (Dr. และ Cr.)'); return; }

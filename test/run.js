@@ -24,7 +24,7 @@ const UNIT = [
 
 const unitOnly = process.argv.includes('--unit');
 const files = UNIT.slice();
-if (!unitOnly) files.push('browser.test.js');
+if (!unitOnly) files.push('browser.test.js', 'design.test.js');
 
 const failed = [];
 for (const f of files) {

@@ -50,6 +50,12 @@ jobs:
       - name: Browser smoke test
         run: npm run test:browser
 
+      # Every .btn on every page must resolve to the same size and padding,
+      # and match the committed snapshot. This is what stops the pages
+      # drifting back into looking like different applications.
+      - name: Design consistency
+        run: npm run test:design
+
   # The fixtures are generated, so a change to the generator that was never
   # re-run leaves the committed CSVs stale — and the tests would then be
   # passing against data no longer produced by the tool that claims to

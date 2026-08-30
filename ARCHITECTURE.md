@@ -48,6 +48,7 @@ app/
   month-import.js     one workbook holding many months -> many periods
   <page>.html/.js     one pair per step; the .js owns only that page
   styles.css          the whole design system, one file
+  styleguide.html     every component, with markup to copy — open it first
   vendor/             SheetJS, Chart.js — committed, never edited
 engine/               pure logic: no DOM, runs in Node, unit-tested
   rulebook.js         account code -> statement / section / group

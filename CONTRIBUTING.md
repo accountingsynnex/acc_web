@@ -28,6 +28,34 @@ CI runs both on every push. It does **not** currently block the GitHub Pages
 deployment — that is a branch protection rule on `main` requiring the `test`
 check, and enabling it is recommended.
 
+## Making things look like the same application
+
+Open **`app/styleguide.html`** in a browser. It shows every component with
+the markup to copy, using the real `styles.css` and no local overrides, so
+what you see is what you get. **If what you are about to build is already on
+that page, use it — do not invent a second version of it.**
+
+Three rules behind it:
+
+1. **Styling classes live in `styles.css`.** No `<style>` blocks in app
+   pages, no `style="..."` to change how a component looks. `btn ghost` once
+   had no CSS rule at all, so its appearance was pasted inline at every call
+   site — and three pages ended up with visibly different buttons.
+2. **A class that exists only for JavaScript starts with `js-`.** That split
+   is what lets "every styling class must have a rule" be checked by a
+   machine rather than remembered by a person.
+3. **Buttons come in exactly three:** `.btn` (primary), `.btn.ghost`
+   (secondary), `.btn.danger` (destructive). A link inside a sentence is
+   `.linkish` and is not a button — if you find yourself writing
+   `style="text-decoration:none"`, you wanted `.btn.ghost`.
+
+`npm run test:design` enforces all of it: every `.btn` on every page must
+resolve to the same padding, size and radius, and match
+`test/design-snapshot.json`. Restyling something on purpose means
+`npm run design:update` in the same commit, which puts the change in the diff
+where a reviewer sees it. Adding a component means adding it to the style
+guide and, if it must be uniform, to `COMPONENTS` in `test/design.test.js`.
+
 ## The three rules that are not obvious
 
 **1. Bump the build stamp.** `const BUILD` in `app/shell.js`, and the `?v=`

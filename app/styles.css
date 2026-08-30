@@ -152,7 +152,10 @@
 
   /* ---------- Main ---------- */
   .main{min-width:0;display:flex;flex-direction:column}
-  .topbar{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:13px;padding:12px 30px;
+  /* min-height, not height: the bar has to be the same on every page even
+     though pages put different controls in it — that variation is exactly
+     what made the pages feel like different sites. */
+  .topbar{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:13px;padding:12px 30px;min-height:65px;
     background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border-bottom:1px solid var(--glass-brd);box-shadow:inset 0 1px 0 var(--glass-hi)}
   .crumb{font-size:12.5px;color:var(--muted)}
   .crumb b{color:var(--ink);font-weight:650}
@@ -167,9 +170,39 @@
   .iconbtn{width:36px;height:36px;border-radius:var(--radius-sm);display:grid;place-items:center;color:var(--muted);
     background:var(--glass-strong);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1px solid var(--glass-brd);box-shadow:inset 0 1px 0 var(--glass-hi)}
   .iconbtn:hover{color:var(--ink)}
-  .btn{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;border-radius:var(--radius-sm);color:#fff;font-weight:650;font-size:13px;
+  /* ---------- Buttons ----------
+     Three levels, and only three. Every action on every page is one of them,
+     so an action never has to invent its own appearance:
+
+       .btn            primary   — the one thing this page is for
+       .btn.ghost      secondary — supporting actions, several per page is fine
+       .btn.danger     destructive — deletes data that cannot be recovered
+
+     Not a button: .linkish, which is a link inside a sentence. If it sits in
+     a toolbar it is a button and should wear .btn.ghost. test/design.test.js
+     asserts every .btn resolves to the same size and padding, so a fourth
+     kind cannot be added by accident. */
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:9px 16px;
+    border:1px solid transparent;border-radius:var(--radius-sm);color:#fff;font-weight:650;font-size:13px;
+    font-family:inherit;line-height:1.5;cursor:pointer;white-space:nowrap;
+    /* buttons are often <a> — without this they inherit the link underline,
+       which is what made three pages' primary buttons look different */
+    text-decoration:none;
     background:linear-gradient(180deg,#6e7b8d,#414c5d);box-shadow:0 5px 14px rgba(35,43,55,.32),inset 0 1px 0 rgba(255,255,255,.4),inset 0 -1px 2px rgba(0,0,0,.2)}
   .btn:hover{background:linear-gradient(180deg,#616e80,#38424f)}
+  .btn:disabled{opacity:.55;cursor:not-allowed;box-shadow:none}
+
+  /* Secondary. Reads as a control, not as a link — it used to be spelled out
+     inline at each call site because the class had no rule behind it. */
+  .btn.ghost{color:var(--ink);background:var(--glass-strong);border-color:var(--line-strong);
+    box-shadow:inset 0 1px 0 var(--glass-hi)}
+  .btn.ghost:hover{background:var(--glass-hi);border-color:var(--accent)}
+
+  /* Destructive. Quiet until hovered: it should not compete with the primary
+     action, but must never be mistaken for one. */
+  .btn.danger{color:var(--bad);background:var(--glass-strong);border-color:color-mix(in srgb,var(--bad) 30%,transparent);
+    box-shadow:none}
+  .btn.danger:hover{background:var(--bad-soft);border-color:var(--bad)}
 
   .content{padding:30px;max-width:1200px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:26px}
   .page-head h1{font-size:31px;font-weight:700;letter-spacing:-.025em;margin:0 0 6px;text-wrap:balance}
@@ -262,7 +295,11 @@
 .up .remove:hover{color:var(--bad);background:var(--bad-soft)}
 .results-empty{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;color:var(--faint);padding:52px 20px}
 .results-empty .big{font-size:15px;font-weight:650;color:var(--muted)}
-.linkish{color:var(--accent-ink);font-weight:650;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+/* An inline link — inside a sentence, sized by the text around it. It is NOT
+   a button: a toolbar action wears .btn.ghost. The underline is the point;
+   anything that had to override it away was a button wearing the wrong class. */
+.linkish{color:var(--accent-ink);font-weight:650;text-decoration:underline;text-underline-offset:2px;cursor:pointer;
+  background:none;border:0;padding:0;font-family:inherit;font-size:inherit}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
 
 /* ---------- Mapping page ---------- */

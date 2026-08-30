@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="th" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%20-158%20919%20919%22%3E%3Cpolygon%20fill%3D%22%23a5a6aa%22%20points%3D%22176%2C3%20405%2C3%20461%2C100%20519%2C3%20752%2C3%20912%2C292%20680%2C292%20632%2C216%20586%2C292%20339%2C292%20287%2C214%20235%2C292%203%2C292%22%2F%3E%3Cpolygon%20fill%3D%22%23ee1b4d%22%20points%3D%222%2C313%20235%2C313%20283%2C397%2050%2C397%22%2F%3E%3Cpolygon%20fill%3D%22%23ee1b4d%22%20points%3D%22339%2C313%20583%2C313%20629%2C397%20289%2C397%22%2F%3E%3Cpolygon%20fill%3D%22%23ee1b4d%22%20points%3D%22679%2C313%20910%2C313%20864%2C397%20632%2C397%22%2F%3E%3Cpolygon%20fill%3D%22%2303aaae%22%20points%3D%2265%2C422%20854%2C422%20807%2C504%20114%2C504%22%2F%3E%3Cpolygon%20fill%3D%22%230371bc%22%20points%3D%22129%2C527%20458%2C527%20408%2C601%20170%2C601%22%2F%3E%3Cpolygon%20fill%3D%22%230371bc%22%20points%3D%22464%2C527%20792%2C527%20753%2C601%20514%2C601%22%2F%3E%3C%2Fsvg%3E" />
+<title>Style guide — FS Close Workspace</title>
+<link rel="stylesheet" href="styles.css?v=2026-08-23.22" />
+<style>
+  /* Only the guide's own scaffolding lives here. Every component below is
+     shown using the real styles.css and nothing else — if it needed a
+     local override to look right, the component would be broken. */
+  .sg{max-width:940px;margin:0 auto;padding:34px 30px 80px;display:flex;flex-direction:column;gap:34px}
+  .sg-head h1{margin:0 0 6px;font-size:26px;font-weight:700;letter-spacing:-.02em}
+  .sg-head p{margin:0;font-size:13px;color:var(--muted);line-height:1.6;max-width:62ch}
+  .sg-sec{border-top:1px solid var(--line);padding-top:22px}
+  .sg-sec > h2{margin:0 0 4px;font-size:16px;font-weight:700;letter-spacing:-.01em}
+  .sg-sec > p{margin:0 0 16px;font-size:12.5px;color:var(--muted);line-height:1.6;max-width:66ch}
+  .sg-demo{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:18px;border-radius:var(--radius);
+    background:var(--glass-strong);border:1px solid var(--glass-brd)}
+  .sg-demo.col{flex-direction:column;align-items:stretch}
+  .sg-code{margin:10px 0 0;padding:12px 14px;border-radius:var(--radius-sm);background:var(--glass-hi);
+    border:1px solid var(--line);font-family:var(--mono);font-size:11.5px;line-height:1.65;
+    white-space:pre-wrap;color:var(--muted);overflow-x:auto}
+  .sg-when{margin:8px 0 0;font-size:12px;color:var(--faint);line-height:1.6}
+  .sg-when b{color:var(--ink);font-weight:650}
+  .sg-bad{border-left:3px solid var(--bad);padding-left:11px;margin-top:10px;font-size:12px;color:var(--muted);line-height:1.6}
+  .sg-bad b{color:var(--var-over)}
+  .sg-swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:10px}
+  .sg-sw{border-radius:var(--radius-sm);border:1px solid var(--line);overflow:hidden;font-size:11px}
+  .sg-sw i{display:block;height:42px}
+  .sg-sw span{display:block;padding:6px 8px;font-family:var(--mono);color:var(--muted)}
+  .sg-toggle{position:fixed;top:16px;right:18px;z-index:9}
+</style>
+</head>
+<body>
+<div class="bg"><i></i></div>
+
+<button class="btn ghost sg-toggle" type="button" id="themeBtn">สลับโหมดสว่าง/มืด</button>
+
+<main class="sg">
+  <div class="sg-head">
+    <h1>Style guide</h1>
+    <p>ทุก component ที่แอปนี้มี พร้อมโค้ดให้คัดลอก — <b>ถ้าสิ่งที่คุณกำลังจะสร้างมีอยู่ในหน้านี้แล้ว ให้ใช้ตัวนั้น อย่าสร้างใหม่</b>
+       หน้านี้โหลด <code>styles.css</code> ตัวจริง ไม่มี override ของตัวเอง ดังนั้นสิ่งที่เห็นคือสิ่งที่จะได้จริง ๆ
+       และ <code>test/design.test.js</code> จะทำให้ CI แดงถ้ามีปุ่มตัวไหนในเว็บมีขนาดไม่ตรงกับที่นี่</p>
+  </div>
+
+  <section class="sg-sec">
+    <h2>ปุ่ม — มี 3 ระดับ และมีแค่ 3</h2>
+    <p>ทุก action ในทุกหน้าต้องเป็นหนึ่งใน 3 ตัวนี้ ไม่มีตัวที่ 4 ถ้ารู้สึกว่าต้องมีตัวที่ 4 แปลว่าโจทย์ยังไม่ชัด ไม่ใช่ว่าขาด component</p>
+    <div class="sg-demo">
+      <button class="btn">ปุ่มหลัก</button>
+      <button class="btn ghost">ปุ่มรอง</button>
+      <button class="btn danger">ลบข้อมูล</button>
+      <button class="btn" disabled>กำลังทำงาน…</button>
+    </div>
+<pre class="sg-code">&lt;button class="btn"&gt;ปุ่มหลัก&lt;/button&gt;
+&lt;button class="btn ghost"&gt;ปุ่มรอง&lt;/button&gt;
+&lt;button class="btn danger"&gt;ลบข้อมูล&lt;/button&gt;</pre>
+    <p class="sg-when">
+      <b>.btn</b> — สิ่งที่หน้านี้มีไว้ทำ หน้าละหนึ่งอัน ·
+      <b>.btn.ghost</b> — action สนับสนุน มีหลายอันได้ ·
+      <b>.btn.danger</b> — ลบข้อมูลที่กู้คืนไม่ได้
+    </p>
+    <p class="sg-bad"><b>อย่าทำ:</b> ใส่ <code>style="..."</code> ทับปุ่ม ถ้าปุ่มหน้าตาไม่ถูกต้อง ให้แก้ที่ <code>styles.css</code>
+       ไม่ใช่ที่จุดเรียกใช้ — <code>btn ghost</code> เคยไม่มี CSS อยู่จริง ทุกที่ที่ใช้เลยต้องเขียนหน้าตาซ้ำเอง จนสามหน้าดูไม่เหมือนกัน</p>
+  </section>
+
+  <section class="sg-sec">
+    <h2>ลิงก์ ≠ ปุ่ม</h2>
+    <p><code>.linkish</code> คือลิงก์ที่อยู่<b>ในประโยค</b> ขนาดตัวอักษรวิ่งตามข้อความรอบตัว ถ้ามันอยู่ใน toolbar มันคือปุ่ม ให้ใช้ <code>.btn.ghost</code></p>
+    <div class="sg-demo col">
+      <div style="font-size:12.5px;color:var(--muted)">พบ <b>12 รหัสใหม่</b> ที่ยังจัดกลุ่มไม่ได้ — <span class="linkish">จับคู่ให้ครั้งเดียว</span> ระบบจะจำไว้ใช้เดือนถัดไป</div>
+    </div>
+<pre class="sg-code">&lt;span class="linkish"&gt;จับคู่ให้ครั้งเดียว&lt;/span&gt;</pre>
+    <p class="sg-bad"><b>สัญญาณว่าใช้ผิด:</b> ถ้าต้องเขียน <code>style="text-decoration:none"</code> แปลว่ามันควรเป็นปุ่ม ไม่ใช่ลิงก์</p>
+  </section>
+
+  <section class="sg-sec">
+    <h2>สถานะ — chip</h2>
+    <p>สีเดียวไม่พอเสมอ chip จึงมีจุดสีคู่กับข้อความ คนตาบอดสีอ่านได้ และปรินต์ขาวดำก็ยังอ่านออก</p>
+    <div class="sg-demo">
+      <span class="chip good"><span class="dot"></span>Debit = Credit</span>
+      <span class="chip warn"><span class="dot"></span>ยังไม่ได้จัดกลุ่ม</span>
+      <span class="chip bad"><span class="dot"></span>ไม่สมดุล</span>
+      <span class="chip neutral"><span class="dot"></span>ตรง budget</span>
+    </div>
+<pre class="sg-code">&lt;span class="chip good"&gt;&lt;span class="dot"&gt;&lt;/span&gt;Debit = Credit&lt;/span&gt;
+&lt;!-- good | warn | bad | neutral --&gt;</pre>
+  </section>
+
+  <section class="sg-sec">
+    <h2>ตัวเลขสรุป — tile</h2>
+    <p>วางในกล่อง <code>.tiles</code> ซึ่งจัด grid ให้เอง · <code>.flag</code> ทำให้เป็นสีเตือน · <code>.over</code> / <code>.under</code> สำหรับผลต่างเทียบงบประมาณ</p>
+    <div class="tiles" style="width:100%">
+      <div class="tile"><div class="k">Actual รวม</div><div class="v">1,074.9M</div><div class="s">จากบัญชี 6xxxxxx</div></div>
+      <div class="tile flag"><div class="k">แผนกที่เกิน budget</div><div class="v">12</div><div class="s">จาก 24 แผนก</div></div>
+      <div class="tile over"><div class="k">ผลต่างรวม</div><div class="v">+437.6M</div><div class="s">ใช้เกิน budget</div></div>
+      <div class="tile under"><div class="k">ผลต่างรวม</div><div class="v">−21.0M</div><div class="s">ใช้ต่ำกว่า budget</div></div>
+    </div>
+<pre class="sg-code">&lt;div class="tiles"&gt;
+  &lt;div class="tile"&gt;&lt;div class="k"&gt;หัวข้อ&lt;/div&gt;&lt;div class="v"&gt;ตัวเลข&lt;/div&gt;&lt;div class="s"&gt;คำอธิบาย&lt;/div&gt;&lt;/div&gt;
+&lt;/div&gt;</pre>
+  </section>
+
+  <section class="sg-sec">
+    <h2>ช่องกรอก — fld</h2>
+    <p><code>.fld</code> จัด label กับ input ให้เอง ไม่ต้องตั้งระยะห่างเอง · ถ้าต้องใช้ class เพื่อให้ JS หาเจอ ให้ขึ้นต้นด้วย <code>js-</code> เสมอ</p>
+    <div class="sg-demo">
+      <div class="fld" style="width:190px"><label>รหัสงวด</label><input type="text" placeholder="เช่น 2026-06" /></div>
+      <div class="fld" style="width:190px"><label>Statement</label><select><option>BS</option><option>PL</option></select></div>
+      <div class="seg"><button class="on">ทั้งหมด</button><button>รหัสใหม่ · 12</button></div>
+    </div>
+<pre class="sg-code">&lt;div class="fld"&gt;&lt;label&gt;รหัสงวด&lt;/label&gt;&lt;input type="text" /&gt;&lt;/div&gt;
+&lt;div class="seg"&gt;&lt;button class="on"&gt;ทั้งหมด&lt;/button&gt;&lt;button&gt;รหัสใหม่&lt;/button&gt;&lt;/div&gt;
+
+&lt;!-- class สำหรับให้ JS หา ต้องขึ้นต้น js- และห้ามเอาไปใส่ style --&gt;
+&lt;input class="js-ml-amt" /&gt;</pre>
+  </section>
+
+  <section class="sg-sec">
+    <h2>สี</h2>
+    <p>ใช้ตัวแปรเสมอ ห้ามเขียนเลขสีตรง ๆ — ทุกตัวมีคู่ของโหมดมืดอยู่แล้ว กดปุ่มมุมขวาบนดูได้</p>
+    <div class="sg-swatches">
+      <div class="sg-sw"><i style="background:var(--accent)"></i><span>--accent</span></div>
+      <div class="sg-sw"><i style="background:var(--good)"></i><span>--good</span></div>
+      <div class="sg-sw"><i style="background:var(--warn)"></i><span>--warn</span></div>
+      <div class="sg-sw"><i style="background:var(--bad)"></i><span>--bad</span></div>
+      <div class="sg-sw"><i style="background:var(--var-over)"></i><span>--var-over</span></div>
+      <div class="sg-sw"><i style="background:var(--var-under)"></i><span>--var-under</span></div>
+      <div class="sg-sw"><i style="background:var(--ink)"></i><span>--ink</span></div>
+      <div class="sg-sw"><i style="background:var(--muted)"></i><span>--muted</span></div>
+      <div class="sg-sw"><i style="background:var(--faint)"></i><span>--faint</span></div>
+    </div>
+    <p class="sg-when"><b>--var-over / --var-under</b> คือหมึกสำหรับตัวเลขผลต่างในตาราง แยกจาก <b>--bad / --good</b>
+       เพราะสองตัวนั้นทำมาเพื่อ chip กับตัวเลขใหญ่ พอเอามาใช้กับตัวหนังสือขนาดตาราง contrast ตกต่ำกว่ามาตรฐาน</p>
+  </section>
+
+  <section class="sg-sec">
+    <h2>โครงหน้า</h2>
+    <p>ทุกหน้าหน้าตาเหมือนกันเพราะใช้โครงเดียวกัน คัดลอกจากหน้าที่มีอยู่แล้ว อย่าเริ่มจากศูนย์</p>
+<pre class="sg-code">&lt;body data-page="statements"&gt;          &lt;!-- shell.js ใช้ highlight เมนู --&gt;
+  &lt;aside class="side" id="side"&gt;&lt;/aside&gt;   &lt;!-- shell.js เติมให้ --&gt;
+  &lt;div class="main"&gt;
+    &lt;div class="topbar"&gt;
+      &lt;div class="crumb"&gt;Output · &lt;b&gt;Statements&lt;/b&gt;&lt;/div&gt;
+      &lt;div class="spacer"&gt;&lt;/div&gt;
+      &lt;span class="selectish"&gt;…period picker…&lt;/span&gt;
+      &lt;button class="iconbtn" id="themeBtn"&gt;…&lt;/button&gt;
+      &lt;button class="btn"&gt;action หลัก&lt;/button&gt;
+    &lt;/div&gt;
+    &lt;div class="content"&gt;
+      &lt;div class="page-head"&gt;&lt;h1&gt;…&lt;/h1&gt;&lt;p&gt;…&lt;/p&gt;&lt;/div&gt;
+      &lt;section&gt;&lt;h2 class="sec"&gt;หัวข้อ&lt;/h2&gt; … &lt;/section&gt;
+      &lt;div class="panel"&gt; … &lt;/div&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;</pre>
+    <p class="sg-when">ลำดับ <code>&lt;script&gt;</code> คือลำดับ dependency — ไม่มี module system มาคำนวณให้ ดู <code>CONTRIBUTING.md</code></p>
+  </section>
+
+  <section class="sg-sec">
+    <h2>ถ้าจะเพิ่ม component ใหม่</h2>
+    <p>1. เขียนกฎใน <code>styles.css</code> (ห้าม inline)&nbsp; · &nbsp;2. เพิ่มตัวอย่างในหน้านี้&nbsp; · &nbsp;3. ถ้ามันต้องเหมือนกันทุกหน้า
+       ให้เพิ่มเข้า <code>COMPONENTS</code> ใน <code>test/design.test.js</code> แล้วรัน <code>node test/design.test.js --update</code></p>
+  </section>
+</main>
+
+<script>
+  document.getElementById('themeBtn').onclick = () => {
+    const r = document.documentElement;
+    r.setAttribute('data-theme', r.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  };
+</script>
+</body>
+</html>

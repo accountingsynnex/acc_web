@@ -82,9 +82,9 @@
             <div class="head"><span class="code">${esc(row.code)}</span><span class="nm">${esc(row.name)}</span>
               <span class="amt ${row.closing < 0 ? 'neg' : ''}">${money(row.closing)}</span></div>
             <div class="mapform">
-              <div class="fld"><label>Statement</label><select class="m-st">${statements.map(s => `<option ${s === st0 ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></div>
-              <div class="fld"><label>Section</label><select class="m-se">${sectionsOf(st0).map(s => `<option>${esc(s)}</option>`).join('')}</select></div>
-              <div class="fld"><label>Group (เลือกหรือพิมพ์ใหม่)</label><input class="m-gr" list="dl-${esc(row.code)}" placeholder="ชื่อกลุ่ม" />
+              <div class="fld"><label>Statement</label><select class="js-m-st">${statements.map(s => `<option ${s === st0 ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></div>
+              <div class="fld"><label>Section</label><select class="js-m-se">${sectionsOf(st0).map(s => `<option>${esc(s)}</option>`).join('')}</select></div>
+              <div class="fld"><label>Group (เลือกหรือพิมพ์ใหม่)</label><input class="js-m-gr" list="dl-${esc(row.code)}" placeholder="ชื่อกลุ่ม" />
                 <datalist id="dl-${esc(row.code)}">${groupsOf(st0, sectionsOf(st0)[0]).map(g => `<option value="${esc(g)}"></option>`).join('')}</datalist></div>
               <button class="btn save">บันทึก</button>
             </div></div>`;
@@ -134,9 +134,9 @@
           <span class="amt ${row.closing < 0 ? 'neg' : ''}">${money(row.closing)}</span>
         </div>
         ${isOpen ? `<div class="mapform">
-          <div class="fld"><label>Statement</label><select class="m-st">${statements.map(s => `<option ${s === st0 ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></div>
-          <div class="fld"><label>Section</label><select class="m-se">${sectionsOf(st0).map(s => `<option ${s === r.section ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></div>
-          <div class="fld"><label>Group (คลิกแล้วพิมพ์เพื่อดูตัวเลือกอื่น)</label><input class="m-gr" list="dl-${esc(row.code)}" value="${esc(r.group)}" onfocus="this.select()" />
+          <div class="fld"><label>Statement</label><select class="js-m-st">${statements.map(s => `<option ${s === st0 ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></div>
+          <div class="fld"><label>Section</label><select class="js-m-se">${sectionsOf(st0).map(s => `<option ${s === r.section ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></div>
+          <div class="fld"><label>Group (คลิกแล้วพิมพ์เพื่อดูตัวเลือกอื่น)</label><input class="js-m-gr" list="dl-${esc(row.code)}" value="${esc(r.group)}" onfocus="this.select()" />
             <datalist id="dl-${esc(row.code)}">${groupsOf(st0, r.section).map(g => `<option value="${esc(g)}"></option>`).join('')}</datalist></div>
           <button class="btn save">บันทึก</button>
           ${hasOverride ? `<button class="linkish" data-reset="${esc(row.code)}" style="align-self:end">ล้างการแก้ไข (กลับค่าเดิม)</button>` : ''}
@@ -155,9 +155,9 @@
         if (editOpen.has(code)) editOpen.delete(code); else editOpen.add(code);
         renderMappedList(currentUnmapped());
       };
-      const stSel = card.querySelector('.m-st');
+      const stSel = card.querySelector('.js-m-st');
       if (!stSel) return;   // collapsed — no form to wire
-      const seSel = card.querySelector('.m-se');
+      const seSel = card.querySelector('.js-m-se');
       stSel.onchange = () => {
         const secs = sectionsOf(stSel.value);
         seSel.innerHTML = secs.map(s => `<option>${esc(s)}</option>`).join('');
@@ -167,8 +167,8 @@
       card.querySelector('.save').onclick = e => {
         e.stopPropagation();
         const statement = stSel.value, section = seSel.value;
-        const group = card.querySelector('.m-gr').value.trim();
-        if (!group) { card.querySelector('.m-gr').focus(); return; }
+        const group = card.querySelector('.js-m-gr').value.trim();
+        if (!group) { card.querySelector('.js-m-gr').focus(); return; }
         const row = Store.combinedRows(period() ? Store.tbFor(period()) : undefined).find(r => r.code === code);
         Store.setMapping(code, { name: row ? row.name : '', statement, section, group });
         editOpen.delete(code);
@@ -246,9 +246,9 @@
         </div>
         <div style="padding:0 16px 14px">${g.codes.map(c => `<span class="code-pill">${esc(c)}</span>`).join('')}</div>
         ${isOpen ? `<div class="mapform" style="padding:0 16px 16px">
-          <div class="fld"><label>Statement</label><select class="n-st">${statements.map(s => `<option ${s === g.statement ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></div>
-          <div class="fld"><label>Section</label><select class="n-se">${sectionsOf(g.statement).map(s => `<option ${s === g.section ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></div>
-          <div class="fld"><label>Group (คลิกแล้วพิมพ์เพื่อดูตัวเลือกอื่น)</label><input class="n-gr" list="dl-note-${esc(g.key)}" value="${esc(g.group)}" onfocus="this.select()" />
+          <div class="fld"><label>Statement</label><select class="js-n-st">${statements.map(s => `<option ${s === g.statement ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></div>
+          <div class="fld"><label>Section</label><select class="js-n-se">${sectionsOf(g.statement).map(s => `<option ${s === g.section ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></div>
+          <div class="fld"><label>Group (คลิกแล้วพิมพ์เพื่อดูตัวเลือกอื่น)</label><input class="js-n-gr" list="dl-note-${esc(g.key)}" value="${esc(g.group)}" onfocus="this.select()" />
             <datalist id="dl-note-${esc(g.key)}">${groupsOf(g.statement, g.section).map(x => `<option value="${esc(x)}"></option>`).join('')}</datalist></div>
           <button class="btn save">ย้ายทั้ง Note (${g.codes.length} รหัส)</button>
         </div>` : ''}
@@ -262,9 +262,9 @@
         if (noteEditOpen.has(key)) noteEditOpen.delete(key); else noteEditOpen.add(key);
         renderNoteList();
       };
-      const stSel = card.querySelector('.n-st');
+      const stSel = card.querySelector('.js-n-st');
       if (!stSel) return;
-      const seSel = card.querySelector('.n-se');
+      const seSel = card.querySelector('.js-n-se');
       stSel.onchange = () => {
         seSel.innerHTML = sectionsOf(stSel.value).map(s => `<option>${esc(s)}</option>`).join('');
         const dl = card.querySelector('datalist');
@@ -276,8 +276,8 @@
       };
       card.querySelector('.save').onclick = () => {
         const statement = stSel.value, section = seSel.value;
-        const group = card.querySelector('.n-gr').value.trim();
-        if (!group) { card.querySelector('.n-gr').focus(); return; }
+        const group = card.querySelector('.js-n-gr').value.trim();
+        if (!group) { card.querySelector('.js-n-gr').focus(); return; }
         for (const code of g.codes) {
           const cur = eff[code] || {};
           Store.setMapping(code, { name: cur.name || '', statement, section, group });
@@ -289,16 +289,16 @@
   }
 
   function refreshGroups(card) {
-    const st = card.querySelector('.m-st').value;
-    const se = card.querySelector('.m-se').value;
+    const st = card.querySelector('.js-m-st').value;
+    const se = card.querySelector('.js-m-se').value;
     const dl = card.querySelector('datalist');
     dl.innerHTML = groupsOf(st, se).map(g => `<option value="${esc(g)}"></option>`).join('');
   }
 
   function wireCards() {
     document.querySelectorAll('#mapList .mapcard').forEach(card => {
-      const stSel = card.querySelector('.m-st');
-      const seSel = card.querySelector('.m-se');
+      const stSel = card.querySelector('.js-m-st');
+      const seSel = card.querySelector('.js-m-se');
       stSel.onchange = () => {
         const secs = sectionsOf(stSel.value);
         seSel.innerHTML = secs.map(s => `<option>${esc(s)}</option>`).join('');
@@ -308,8 +308,8 @@
       card.querySelector('.save').onclick = () => {
         const code = card.dataset.code;
         const statement = stSel.value, section = seSel.value;
-        const group = card.querySelector('.m-gr').value.trim();
-        if (!group) { card.querySelector('.m-gr').focus(); return; }
+        const group = card.querySelector('.js-m-gr').value.trim();
+        if (!group) { card.querySelector('.js-m-gr').focus(); return; }
         const row = Store.combinedRows(period() ? Store.tbFor(period()) : undefined).find(r => r.code === code);
         Store.setMapping(code, { name: row ? row.name : '', statement, section, group });
         render();  // this code leaves the unmapped list; taxonomy may gain a new group next render

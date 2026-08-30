@@ -589,7 +589,7 @@
         <b style="color:${DIAG_STYLE[worst].color}">${DIAG_STYLE[worst].ico} ${esc(title)}</b>
         <span class="muted" style="font-size:12px">ผลการอ่านไฟล์ล่าสุด</span>
         <div class="spacer" style="margin-left:auto"></div>
-        <button class="linkish" id="diagClose" style="text-decoration:none">ปิด</button>
+        <button class="btn ghost" id="diagClose">ปิด</button>
       </div>
       ${diag.map(d => {
         const st = DIAG_STYLE[d.kind] || DIAG_STYLE.info;
