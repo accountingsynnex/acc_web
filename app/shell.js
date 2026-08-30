@@ -7,7 +7,7 @@
      release can't be half-applied by a cached file — and "is this the new one
      or the old one?" is answerable by looking, not by guessing. Bump this
      string in the same commit as anything worth telling apart. */
-  const BUILD = '2026-08-23.23';
+  const BUILD = '2026-08-23.24';
   window.APP_BUILD = BUILD;
 
   /* Nobody signed in? Straight to the sign-in page, before this page paints
@@ -92,7 +92,7 @@
 
   const side = document.getElementById('side');
   if (side) side.innerHTML =
-    `<div class="brand"><span class="mark logo">${LOGO}</span><span class="wm">Close Workspace<small>SYNNEX Consolidation</small></span></div>
+    `<div class="brand"><span class="mark logo">${LOGO}</span><span class="wm">SYNNEX Conso<small>Accounting Web</small></span></div>
      ${nav}
      <div class="side-foot">
        <div class="avatar">${esc(initials)}</div>
