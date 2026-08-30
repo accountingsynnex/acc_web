@@ -23,37 +23,55 @@
   // third level, present only when the imported TB carries that dimension.
   const expandedCCs = new Set();
 
-  /* How the accounts inside a department are ordered. One shared setting,
-     not one per department: picking "by code" once should reorder every
-     drill-down at the same time, the way sorting a spreadsheet column does.
-     Defaults to the largest spend first, which is what the ranking above
-     shows. */
-  let acctSort = { key: 'actual', dir: 'desc' };
+  /* All three levels of the drill-down sort the same way, from one place:
+     departments, the cost centres inside one, and the accounts inside one of
+     those. Each keeps its own state so sorting the outer table does not
+     disturb an inner one that happens to be open.
 
-  function sortAccounts(list) {
-    const { key, dir } = acctSort, s = dir === 'asc' ? 1 : -1;
-    const byCode = (a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true });
-    // Accounts with no budget line have nothing to rank on, so they sort to
-    // the bottom in BOTH directions — floating them to the top on an
-    // ascending sort would bury the rows the sort was asked about.
-    const valOf = a => key === 'budget' ? a.budget
-      : key === 'variance' ? (a.budget == null ? null : a.actual - a.budget)
-      : a.actual;
+     `abs` on the department default is the ranking the page opens with —
+     largest deviation from plan in EITHER direction, which is what a variance
+     report is for. Any click clears it, because someone who clicks a column
+     twice expects plain ascending/descending of the values they can see. */
+  let deptSort = null;          // null = the page's own default, see below
+  let deptSortChosen = false;   // true once the reader has picked a column
+  let ccSort = { key: 'actual', dir: 'desc' };
+  let acctSort = { key: 'actual', dir: 'desc' };
+  const SORTS = { dept: () => deptSort, cc: () => ccSort, acct: () => acctSort };
+
+  /* One comparator for every table. `valueOf` maps a row to the figure the
+     chosen column shows; rows with nothing to rank on (no budget line, so no
+     variance) sort to the bottom in BOTH directions — floating them to the
+     top on an ascending sort would bury the rows the sort was asked about. */
+  function sortRows(scope, list, valueOf, nameOfRow) {
+    const st = SORTS[scope]();
+    const s = st.dir === 'asc' ? 1 : -1;
+    const byName = (a, b) => String(nameOfRow(a)).localeCompare(String(nameOfRow(b)), 'th', { numeric: true });
     return list.slice().sort((a, b) => {
-      if (key === 'code') return s * byCode(a, b);
-      const av = valOf(a), bv = valOf(b);
-      if (av == null && bv == null) return byCode(a, b);
+      if (st.key === 'name') return s * byName(a, b);
+      let av = valueOf(a, st.key), bv = valueOf(b, st.key);
+      if (av == null && bv == null) return byName(a, b);
       if (av == null) return 1;
       if (bv == null) return -1;
-      return s * (av - bv) || byCode(a, b);
+      if (st.abs) { av = Math.abs(av); bv = Math.abs(bv); }
+      return s * (av - bv) || byName(a, b);
     });
   }
 
-  function sortableTh(key, label, cls) {
-    const on = acctSort.key === key;
-    const arrow = on ? (acctSort.dir === 'asc' ? '▲' : '▼') : '';
-    return `<th class="${cls} sortable${on ? ' sorted' : ''}" data-sort="${key}" title="กดเพื่อเรียงลำดับ">${label}<span class="sarrow">${arrow}</span></th>`;
+  function sortableTh(scope, key, label, cls) {
+    const st = SORTS[scope]();
+    const on = st.key === key;
+    const arrow = on ? (st.dir === 'asc' ? '▲' : '▼') : '';
+    return `<th class="${cls} sortable${on ? ' sorted' : ''}" data-sort="${key}" data-sort-scope="${scope}"`
+      + ` title="กดเพื่อเรียงลำดับ">${label}<span class="sarrow">${arrow}</span></th>`;
   }
+
+  // Accounts keep their own value map: `code` sorts by the account code, and
+  // it is the one column that reads best low-to-high.
+  const sortAccounts = list => sortRows('acct', list,
+    (a, key) => key === 'budget' ? a.budget
+      : key === 'variance' ? (a.budget == null ? null : a.actual - a.budget)
+      : a.actual,
+    a => a.code);
 
   const charts = {};
   function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
@@ -408,12 +426,31 @@
     drawChart('overrunChart', top5.map(r => r.name), top5.map(r => r.actual), accountBudgets ? top5.map(r => r.budget) : null);
 
     // ---- department summary + drill-down ----
-    const deptAll = depts.slice().sort((a, b) => hasBudget ? Math.abs(b.variance) - Math.abs(a.variance) : b.actual - a.actual);
+    /* Two orderings, on purpose. `deptRanked` is the page's own ranking and
+       is what the chart draws — a bar chart of the eight SMALLEST departments
+       is not something anyone asks for, so it does not follow the table.
+       `deptAll` is whatever the reader has sorted the table to. */
+    const deptRanked = depts.slice().sort((a, b) => hasBudget ? Math.abs(b.variance) - Math.abs(a.variance) : b.actual - a.actual);
+    /* Until the reader picks a column the default is derived fresh each
+       render, so importing a budget promotes the table from "biggest
+       spenders" to "biggest deviation from plan" instead of being stuck on
+       whatever was right before the budget existed. */
+    if (!deptSortChosen) deptSort = hasBudget ? { key: 'variance', dir: 'desc', abs: true } : { key: 'actual', dir: 'desc' };
+    const deptAll = sortRows('dept', depts,
+      (d, key) => key === 'budget' ? (hasBudget ? d.budget : null)
+        : key === 'variance' ? (hasBudget ? d.variance : null)
+        : d.actual,
+      d => nameOf(d.code));
     const splitCount = deptAll.filter(d => d.ccs.size > 1).length;
-    $('deptSub').textContent = `ครบทั้ง ${deptAll.length} แผนก — ${hasBudget ? 'เรียงตามผลต่างสัมบูรณ์' : 'เรียงตามยอดใช้จ่าย'} (กราฟแสดง Top 8, ตารางเลื่อนดูได้ครบ)`
+    const SORT_LABEL = { name: 'ชื่อแผนก', actual: 'Actual', budget: 'Budget', variance: 'ผลต่าง' };
+    const order = deptSort.abs ? 'ผลต่างสัมบูรณ์ มาก→น้อย'
+      : `${SORT_LABEL[deptSort.key] || deptSort.key} ${deptSort.dir === 'asc' ? 'น้อย→มาก' : 'มาก→น้อย'}`;
+    $('deptSub').textContent = `ครบทั้ง ${deptAll.length} แผนก — กดหัวคอลัมน์เพื่อเรียง (ตอนนี้: ${order})`
+      + ` · กราฟแสดง Top 8 ตามลำดับของหน้านี้`
       + (splitCount ? ` · ${splitCount} แผนกกดเข้าไปดูรายศูนย์ต้นทุนได้` : '');
 
-    const acctCols = () => `${sortableTh('code', 'บัญชี', '')}${sortableTh('actual', 'Actual', 'r')}${accountBudgets ? sortableTh('budget', 'Budget', 'r') + sortableTh('variance', 'ผลต่าง', 'r') : ''}`;
+    const acctCols = () => `${sortableTh('acct', 'name', 'บัญชี', '')}${sortableTh('acct', 'actual', 'Actual', 'r')}`
+      + (accountBudgets ? sortableTh('acct', 'budget', 'Budget', 'r') + sortableTh('acct', 'variance', 'ผลต่าง', 'r') : '');
     const acctLine = a => {
       const v = a.budget == null ? null : a.actual - a.budget;
       return `<tr class="${v != null && v > 0.5 ? 'acct-over' : ''}">
@@ -439,7 +476,11 @@
        department with a single cost centre would just be the same list
        behind an extra click. */
     function ccTable(d) {
-      const list = [...d.ccs.values()].sort((a, b) => b.actual - a.actual);
+      const list = sortRows('cc', [...d.ccs.values()],
+        (c, key) => key === 'budget' ? (c.hasBudget ? c.budget : null)
+          : key === 'variance' ? (c.hasBudget ? c.actual - c.budget : null)
+          : c.actual,
+        c => ccNameOf(d.code, c.code));
       // Budget columns only when the file actually carries a cost-centre
       // line for this department. A department whose budget was written at
       // department level would otherwise show every one of its cost centres
@@ -462,7 +503,7 @@
           <tr class="cc-detail" ${open ? '' : 'hidden'}><td colspan="${cols}"><div class="inner">${acctTable(c.accounts)}</div></td></tr>`;
       };
       return `<div class="acct-scroll"><table>
-        <thead><tr><th></th><th>ศูนย์ต้นทุน</th><th class="r">Actual</th>${ccBudget ? '<th class="r">Budget</th><th class="r">ผลต่าง</th>' : ''}<th class="r">สัดส่วนในแผนก</th></tr></thead>
+        <thead><tr><th></th>${sortableTh('cc', 'name', 'ศูนย์ต้นทุน', '')}${sortableTh('cc', 'actual', 'Actual', 'r')}${ccBudget ? sortableTh('cc', 'budget', 'Budget', 'r') + sortableTh('cc', 'variance', 'ผลต่าง', 'r') : ''}<th class="r">สัดส่วนในแผนก</th></tr></thead>
         <tbody>${list.map(row).join('')}</tbody>
       </table></div>`;
     }
@@ -478,7 +519,11 @@
       return `<tr class="dept-detail" data-for="${esc(d.code)}" ${open ? '' : 'hidden'}><td colspan="${hasBudget ? 6 : 4}"><div class="inner">${inner}</div></td></tr>`;
     }
 
-    $('deptTbl').innerHTML = `<thead><tr><th></th><th>แผนก</th><th class="r">Actual</th>${hasBudget ? '<th class="r">Budget</th><th class="r">ผลต่าง</th><th>สถานะ</th>' : ''}</tr></thead>
+    /* สถานะ is not sortable: it is a three-way bucket of ผลต่าง, so sorting by
+       it would be the same order under a different name. */
+    $('deptTbl').innerHTML = `<thead><tr><th></th>${sortableTh('dept', 'name', 'แผนก', '')}${sortableTh('dept', 'actual', 'Actual', 'r')}`
+      + (hasBudget ? `${sortableTh('dept', 'budget', 'Budget', 'r')}${sortableTh('dept', 'variance', 'ผลต่าง', 'r')}<th>สถานะ</th>` : '')
+      + `</tr></thead>
       <tbody>${deptAll.map(d => `
         <tr class="dept-row ${expandedDepts.has(d.code) ? 'open' : ''}" data-dept="${esc(d.code)}">
           <td class="chev">${expandedDepts.has(d.code) ? '▾' : '▸'}</td>
@@ -495,9 +540,17 @@
       // survives the redraw. Clicking the same column again flips direction.
       const th = e.target.closest('[data-sort]');
       if (th) {
-        const key = th.dataset.sort;
-        if (acctSort.key === key) acctSort.dir = acctSort.dir === 'asc' ? 'desc' : 'asc';
-        else acctSort = { key, dir: key === 'code' ? 'asc' : 'desc' };   // codes read best low→high, money high→low
+        const { sort: key, sortScope: scope } = th.dataset;
+        const cur = SORTS[scope]();
+        // Same column again flips direction; a new column starts at the end
+        // that reads best — names low→high, money high→low. Any click drops
+        // the department default's absolute-value ranking (see deptSort).
+        const next = cur.key === key && !cur.abs
+          ? { key, dir: cur.dir === 'asc' ? 'desc' : 'asc' }
+          : { key, dir: key === 'name' ? 'asc' : 'desc' };
+        if (scope === 'dept') { deptSort = next; deptSortChosen = true; }
+        else if (scope === 'cc') ccSort = next;
+        else acctSort = next;
         render();
         return;
       }
@@ -523,7 +576,7 @@
       row.querySelector('.chev').textContent = open ? '▾' : '▸';
       detailRow.hidden = !open;
     };
-    const deptTop = deptAll.slice(0, 8);
+    const deptTop = deptRanked.slice(0, 8);
     drawChart('deptChart', deptTop.map(d => nameOf(d.code)), deptTop.map(d => d.actual), hasBudget ? deptTop.map(d => d.budget) : null);
   }
 
