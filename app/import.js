@@ -863,7 +863,6 @@
   $('filterSeg').querySelectorAll('button').forEach(b => b.onclick = () => {
     filter = b.dataset.f; $('filterSeg').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); renderAll();
   });
-  $('nextBtn').onclick = () => { location.href = 'mapping.html'; };
   $('themeBtn').onclick = () => { const r = document.documentElement; r.setAttribute('data-theme', r.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'); };
 
   renderPeriodSwitcher();

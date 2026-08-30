@@ -357,7 +357,6 @@
     reader.readAsText(file);
   };
 
-  $('nextBtn').onclick = () => { location.href = 'import.html'; };
   $('themeBtn').onclick = () => { const r = document.documentElement; r.setAttribute('data-theme', r.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'); };
   $('mappedSearch').oninput = e => { mappedSearch = e.target.value; renderMappedSection(currentUnmapped()); };
   $('viewSeg').querySelectorAll('button').forEach(b => b.onclick = () => {

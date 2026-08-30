@@ -107,7 +107,6 @@
   $('q').addEventListener('input', e => { state.q = e.target.value; render(); });
   $('fStatement').addEventListener('change', e => { state.statement = e.target.value; render(); });
   $('fStatus').addEventListener('change', e => { state.status = e.target.value; render(); });
-  $('nextBtn').onclick = () => { location.href = 'statements.html'; };
   $('themeBtn').onclick = () => { const r = document.documentElement; r.setAttribute('data-theme', r.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'); };
 
   render();
