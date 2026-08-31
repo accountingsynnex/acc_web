@@ -68,7 +68,16 @@ const COMPONENTS = [
   { sel: '.page-head h1', props: ['fontSize', 'fontWeight'] },
   { sel: 'h2.sec', props: ['fontSize', 'fontWeight', 'textTransform'] },
   { sel: '.fld label', props: ['fontSize', 'fontWeight'] },
-  { sel: '.fld input, .fld select', props: ['fontSize', 'paddingTop', 'paddingLeft', 'borderRadius'] },
+  /* height is part of the contract because a <select> and the <input> beside
+     it in the same form row have to line up, and a select is the one control
+     whose height the browser can change out from under the stylesheet — its
+     `appearance` decides it, and styles.css sets that per browser. */
+  { sel: '.fld input, .fld select', props: ['fontSize', 'paddingTop', 'paddingLeft', 'borderRadius', 'height'] },
+  /* width, because under appearance:base-select a <select> sizes itself to
+     whichever option is currently picked rather than to the widest one.
+     Without a width of its own it would resize as the filter is used and
+     shuffle the toolbar around it, so every .filtersel resolves to one. */
+  { sel: '.filtersel', props: ['fontSize', 'fontWeight', 'borderRadius', 'height', 'width'] },
   { sel: '.seg button', props: ['fontSize', 'fontWeight', 'paddingTop', 'paddingLeft'] },
   { sel: '.topbar', props: ['height'] },
   { sel: '.crumb', props: ['fontSize'] },

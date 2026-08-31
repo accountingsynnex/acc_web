@@ -202,6 +202,61 @@
     box-shadow:none}
   .btn.danger:hover{background:var(--bad-soft);border-color:var(--bad)}
 
+  /* ---------- Dropdown lists ----------
+     The list a <select> drops open is normally drawn by the operating system,
+     not by this stylesheet: square corners, its own greys, no idea that every
+     other surface on the page is rounded and glass. Chromium 135+ (Chrome and
+     Edge) hands that list to the page through appearance:base-select, so here
+     it becomes a surface like the rest — same radius, same border, same hover
+     ink as the sidebar, and it follows dark mode because it is built out of
+     the same tokens.
+
+     Firefox and Safari do not support it: they fail the @supports test, skip
+     everything below, and keep the native popup. That is the fallback and it
+     is a working one — nothing in the block is load-bearing.
+
+     Opting in also stops the browser drawing the *closed* control, so what it
+     stops drawing is redrawn here: the box still comes from each call site's
+     own rule (.selectish select, .filtersel, .fld select), the arrow from
+     ::picker-icon below. */
+  @supports (appearance:base-select){
+    select,select::picker(select){appearance:base-select}
+    /* The closed control keeps whatever its call site gave it; these only put
+       back what the UA sheet stops supplying. */
+    select{font:inherit;color:inherit;text-align:start;align-items:center;gap:6px;overflow:hidden}
+    /* The selected option's text is cloned in here. One line, clipped: the
+       native control ellipsised a long period name, and without this the
+       clone wraps and pushes the whole topbar taller. */
+    select::selectedcontent{display:block;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+    /* A chevron rather than the UA's filled triangle, turning over when open. */
+    select::picker-icon{content:'';flex:none;width:7px;height:7px;margin-bottom:2px;
+      border:solid var(--faint);border-width:0 1.6px 1.6px 0;
+      transform:rotate(45deg);transition:transform .15s ease}
+    select:open::picker-icon{transform:rotate(-135deg);margin-bottom:-2px}
+
+    /* Base appearance sizes the closed control to whichever option is
+       selected; the native one sized it to the widest option and then stayed
+       put. Without a width of its own a control would resize every time it
+       was used and shuffle the row it sits in — so each one gets a width.
+       .fld select is already width:100% and needs nothing. */
+    .selectish select{width:160px;padding:0;line-height:24px}
+    .filtersel{min-width:150px}
+
+    /* The list itself. --glass-strong is opaque in both themes, which a
+       floating panel has to be — there is no blur behind a popover. */
+    select::picker(select){
+      border:1px solid var(--glass-brd);border-radius:var(--radius-sm);
+      background:var(--glass-strong);color:var(--ink);
+      box-shadow:var(--shadow);
+      padding:5px;margin-block:6px;
+      max-height:min(58vh,320px);overflow:auto}
+    option{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:7px;
+      font:inherit;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer}
+    option:hover,option:focus{background:var(--accent-soft);outline:none}
+    option:checked{color:var(--accent-ink)}
+    option::checkmark{color:var(--accent);font-size:12px;order:1;margin-left:auto}
+  }
+
   .content{padding:30px;max-width:1200px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:26px}
   .page-head h1{font-size:31px;font-weight:700;letter-spacing:-.025em;margin:0 0 6px;text-wrap:balance}
   .page-head p{margin:0;color:var(--muted);max-width:64ch}

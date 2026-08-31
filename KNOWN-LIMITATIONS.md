@@ -160,3 +160,21 @@ Not problems — choices whoever takes this over should make deliberately:
   section comments if it ever needs splitting.
 - **`import.js`** is the file most in need of being broken up. The
   file-shape detection is separable from the UI.
+
+## 10. Dropdown lists look different on Firefox and Safari
+
+**Cosmetic, and deliberately one-way.**
+
+The list a `<select>` drops open is drawn by the browser, not by the page.
+Chromium 135+ hands it over through `appearance: base-select`, so on Chrome
+and Edge the popup is rounded, themed and dark-mode aware like every other
+surface. Firefox and Safari have not shipped it: they fail the `@supports`
+test in `app/styles.css`, skip the block, and get the square native popup.
+
+Nothing but appearance depends on it, and the block is written so the *closed*
+control lands in the same place either way — but the two branches are only
+equal by construction, so anything added inside `@supports (appearance:
+base-select)` has to be checked in a browser on each side. The geometry that
+matters is pinned by `test/design.test.js` (`.filtersel` width and height,
+`.fld input, .fld select` height, `.topbar` height), which runs Chromium only:
+that catches the base-select branch drifting, not the native one.
